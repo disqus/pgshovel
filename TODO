@@ -1,0 +1,10 @@
+* Generally improve documentation and docstrings.
+* Add `--force` option to `pgshovel-drop-group` command to allow dropping groups from failed databases.
+* Add test environment.
+* Add a better method to add databases than piping in configuration files.
+* Add intelligent database connection management to the DatabaseManager.
+
+* Add node ID to _pgshovel schema to avoid accidental duplicate database registration?
+* Add group repair tool.
+* Add database repair tool.
+* Allow database removal.
