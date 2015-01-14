@@ -1,5 +1,11 @@
-from setuptools import setup
+import os
+from setuptools import (
+    find_packages,
+    setup,
+)
 
+
+PACKAGE_DIR = os.path.join('src', 'main', 'python')
 
 setup(
     name='pgshovel',
@@ -21,6 +27,10 @@ setup(
             'pgshovel-move-group = pgshovel.administration.groups:move_group',
             'pgshovel-shell = pgshovel.administration.shell:shell',
         ],
+    },
+    packages=find_packages(PACKAGE_DIR),
+    package_dir={
+        '': PACKAGE_DIR,
     },
     classifier=['Private :: Do Not Upload'],
 )
