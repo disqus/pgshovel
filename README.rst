@@ -29,26 +29,12 @@ Cluster Initialization
 
     pgshovel-initialize-cluster
 
-Adding a Database
-~~~~~~~~~~~~~~~~~
-
-::
-
-    pgshovel-add-database $NAME < configuration.json
-
-Listing Databases
-~~~~~~~~~~~~~~~~~
-
-::
-
-    pgshovel-list-databases
-
 Creating a Capture Group
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 ::
 
-    pgshovel-create-group $NAME $DATABASE $TABLE ...
+    pgshovel-create-group $NAME < configuration
 
 Listing Capture Groups
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -57,19 +43,34 @@ Listing Capture Groups
 
     pgshovel-list-groups
 
-Moving a Capture Group between Databases
+
+Retrieving Details about a Capture Group
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ::
 
-    pgshovel-move-group $NAME $DATABASE
+    pgshovel-inspect-group $NAME > configuration
+
+Updating a Capture Group
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+::
+
+    pgshovel-update-group $NAME[@$VERSION] < configuration
+
+Moving Capture Group(s) to a new Database en Masse
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+::
+
+    pgshovel-move-group $NAME[@$VERSION] ... < database
 
 Dropping a Capture Group
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 ::
 
-    pgshovel-drop-group $NAME
+    pgshovel-drop-group $NAME[@$VERSION]
 
 Development
 -----------

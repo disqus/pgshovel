@@ -1,0 +1,4 @@
+# This directory contains automatically generated protocol buffer classes.
+*
+!.gitignore
+!__init__.py

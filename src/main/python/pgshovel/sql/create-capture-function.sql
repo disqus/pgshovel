@@ -1,4 +1,4 @@
-CREATE FUNCTION ${schema}.capture()
+CREATE OR REPLACE FUNCTION ${schema}.capture()
 RETURNS trigger
 LANGUAGE plpythonu AS
 $$TRIGGER$$
@@ -13,20 +13,17 @@ $$TRIGGER$$
             'transaction': plpy.prepare('SELECT txid_current() as id, extract(epoch from now()) as time'),
         }
 
-    (group, alias) = TD['args']
+    (queue, version) = TD['args']
     data = {
         'operation': TD['event'],
         'transaction': dict(plpy.execute(statements['transaction'])[0]),
-        'group': group,
-        'table': {
-            'name': TD['table_name'],
-            'alias': alias,
-        },
+        'table': TD['table_name'],
         'state': {
             'new': TD['new'],
             'old': TD['old'],
         },
+        'version': version,
     }
 
-    plpy.execute(statements['enqueue'], ('${queue}', 'operation', json.dumps(data)))
+    plpy.execute(statements['enqueue'], (queue, 'operation', json.dumps(data)))
 $$TRIGGER$$;

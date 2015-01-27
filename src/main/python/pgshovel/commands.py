@@ -1,15 +1,15 @@
 import atexit
-import inspect
 import functools
+import inspect
 import json
-import logging.config
 import optparse
-import textwrap
 import sys
+import textwrap
 from datetime import timedelta
-from pkg_resources import cleanup_resources
 
+import logging.config
 from kazoo.client import KazooClient
+from pkg_resources import cleanup_resources
 from tabulate import tabulate
 
 from pgshovel.application import (
@@ -30,7 +30,7 @@ class Option(object):
 
 def command(function=None, *args, **kwargs):
 
-    def decorator(function, options=(), description=None):
+    def decorator(function, options=(), description=None, start=True):
         argspec = inspect.getargspec(function)
 
         arguments = ' '.join(argspec.args[2:])
@@ -83,6 +83,8 @@ def command(function=None, *args, **kwargs):
 
             environment = Environment(zookeeper)
             application = Application(options.application, environment)
+            if start:
+                application.start()
 
             try:
                 try:

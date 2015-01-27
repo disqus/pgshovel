@@ -1,6 +1,7 @@
 import logging
 import sys
 import uuid
+from contextlib import contextmanager
 
 from pgshovel.utilities.exceptions import chained
 
@@ -60,3 +61,29 @@ class Transaction(object):
 
     def rollback(self):
         self.__abort_on_failure(self.connection.tpc_rollback)
+
+
+@contextmanager
+def managed(transactions):
+    """
+    Prepares a sequence of transactions (in the order they were provided),
+    committing them all if the managed block executes successfully, otherwise
+    rolling them all back.
+
+    If any of the ``commit`` or ``rollback`` operations fail, the transactions
+    will need to be manually recovered by an administrator.
+    """
+    prepared = []
+
+    try:
+        # Prepare all of the database transactions...
+        for transaction in transactions:
+            transaction.prepare()
+            prepared.append(transaction)
+        yield
+    except Exception:
+        for transaction in prepared:
+            transaction.rollback()
+    else:
+        for transaction in prepared:
+            transaction.commit()

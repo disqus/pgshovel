@@ -1,5 +1,3 @@
-from pgshovel.codec import JsonCodec
-from pgshovel.databases import DatabaseManager
 from pgshovel.groups import GroupManager
 
 
@@ -9,13 +7,10 @@ class Environment(object):
 
 
 class Application(object):
-    codec = JsonCodec()
-
     def __init__(self, name, environment):
         self.name = name
         self.environment = environment
 
-        self.databases = DatabaseManager(self)
         self.groups = GroupManager(self)
 
     def __str__(self):
@@ -29,6 +24,8 @@ class Application(object):
     def schema(self):
         return '_pgshovel_%s' % (self.name,)
 
-    @property
-    def queue(self):
-        return '_pgshovel_%s.transactions' % (self.name,)
+    def start(self):
+        self.groups.start()
+
+    def stop(self):
+        self.groups.stop()
