@@ -16,6 +16,10 @@ from pgshovel.application import (
     Application,
     Environment,
 )
+from pgshovel.interfaces.application_pb2 import (
+    ApplicationConfiguration,
+    EnvironmentConfiguration,
+)
 from pgshovel.utilities.templates import resource_filename
 
 
@@ -78,12 +82,23 @@ def command(function=None, *args, **kwargs):
 
             logging.config.fileConfig(logging_configuration)
 
-            zookeeper = KazooClient(options.zookeeper_hosts)
-            zookeeper.start()
+            environment = Environment(
+                EnvironmentConfiguration(
+                    zookeeper=EnvironmentConfiguration.ZooKeeperConfiguration(
+                        hosts=options.zookeeper_hosts,
+                    ),
+                ),
+            )
 
-            environment = Environment(zookeeper)
-            application = Application(options.application, environment)
+            application = Application(
+                environment,
+                ApplicationConfiguration(
+                    name=options.application,
+                ),
+            )
+
             if start:
+                environment.zookeeper.start()
                 application.start()
 
             try:
@@ -98,7 +113,7 @@ def command(function=None, *args, **kwargs):
             finally:
                 # TODO: Find more graceful way to shut down the entire environment
                 # and close all connections, rather than just ZooKeeper.
-                zookeeper.stop()
+                environment.zookeeper.stop()
 
         return wrapper
 

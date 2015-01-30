@@ -1,0 +1,17 @@
+message ApplicationConfiguration {
+
+    required string name = 1;
+
+}
+
+message EnvironmentConfiguration {
+
+    message ZooKeeperConfiguration {
+
+        required string hosts = 1;
+
+    }
+
+    required ZooKeeperConfiguration zookeeper = 1;
+
+}

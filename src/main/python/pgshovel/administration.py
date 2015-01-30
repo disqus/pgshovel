@@ -60,7 +60,7 @@ def __configure_database(application, cursor):
 
 
 def __trigger_name(application, group):
-    return '_pgshovel_%s_%s_capture' % (application.name, group.name)
+    return '_pgshovel_%s_%s_capture' % (application.configuration.name, group.name)
 
 
 def __queue_name(application, group):
@@ -136,6 +136,7 @@ def shell(options, application):
 @command(description="Initializes a new cluster in ZooKeeper.", start=False)
 def initialize_cluster(options, application):
     logger.info('Creating a new cluster for %s...', application)
+    application.environment.zookeeper.start()
     ztransaction = application.environment.zookeeper.transaction()
     ztransaction.create(application.path)
     ztransaction.create(application.groups.path)
