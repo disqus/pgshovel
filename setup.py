@@ -3,9 +3,23 @@ from setuptools import (
     find_packages,
     setup,
 )
+from setuptools.command.test import test
 
 
 PACKAGE_DIR = os.path.join('src', 'main', 'python')
+
+
+class PyTest(test):
+    def finalize_options(self):
+        test.finalize_options(self)
+        self.test_args = []
+        self.test_suite = True
+
+    def run_tests(self):
+        import pytest, sys
+        errno = pytest.main(self.test_args)
+        sys.exit(errno)
+
 
 setup(
     name='pgshovel',
@@ -33,4 +47,10 @@ setup(
         '': PACKAGE_DIR,
     },
     classifier=['Private :: Do Not Upload'],
+    cmdclass = {
+        'test': PyTest,
+    },
+    tests_require=(
+        'pytest',
+    ),
 )
