@@ -1,0 +1,11 @@
+name: "users"
+primary_key: "id"
+columns: "username"
+joins {
+    table {
+        name: "profiles"
+        primary_key: "id"
+        columns: "name"
+    }
+    foreign_key: "user_id"
+}

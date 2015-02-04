@@ -8,7 +8,6 @@ import textwrap
 from datetime import timedelta
 
 import logging.config
-from kazoo.client import KazooClient
 from pkg_resources import cleanup_resources
 from tabulate import tabulate
 
@@ -34,7 +33,7 @@ class Option(object):
 
 def command(function=None, *args, **kwargs):
 
-    def decorator(function, options=(), description=None, start=True):
+    def decorator(function, options=(), description=None):
         argspec = inspect.getargspec(function)
 
         arguments = ' '.join(argspec.args[2:])
@@ -97,23 +96,14 @@ def command(function=None, *args, **kwargs):
                 ),
             )
 
-            if start:
-                environment.zookeeper.start()
-                application.start()
-
             try:
-                try:
-                    return function(options, application, *arguments)
-                except TypeError as e:
-                    if str(e).startswith('%s() takes ' % function.__name__):
-                        parser.print_usage(sys.stderr)
-                        sys.exit(1)
-                    else:
-                        raise
-            finally:
-                # TODO: Find more graceful way to shut down the entire environment
-                # and close all connections, rather than just ZooKeeper.
-                environment.zookeeper.stop()
+                return function(options, application, *arguments)
+            except TypeError as e:
+                if str(e).startswith('%s() takes ' % function.__name__):
+                    parser.print_usage(sys.stderr)
+                    sys.exit(1)
+                else:
+                    raise
 
         return wrapper
 

@@ -1,6 +1,5 @@
 from kazoo.client import KazooClient
 
-from pgshovel.groups import GroupManager
 
 
 class Environment(object):
@@ -15,13 +14,29 @@ class Environment(object):
             zookeeper = self.__zookeeper = KazooClient(self.configuration.zookeeper.hosts)
         return zookeeper
 
+    def __enter__(self):
+        self.start()
+
+    def __exit__(self, type, value, traceback):
+        self.stop()
+
+    def stop(self):
+        self.zookeeper.stop()
+
+    def start(self):
+        self.zookeeper.start()
+
 
 class Application(object):
     def __init__(self, environment, configuration):
         self.environment = environment
         self.configuration = configuration
 
-        self.groups = GroupManager(self)
+    def __enter__(self):
+        self.start()
+
+    def __exit__(self, type, value, traceback):
+        self.stop()
 
     def __str__(self):
         return self.configuration.name
@@ -35,7 +50,7 @@ class Application(object):
         return '_pgshovel_%s' % (self.configuration.name,)
 
     def start(self):
-        self.groups.start()
+        self.environment.start()
 
     def stop(self):
-        self.groups.stop()
+        self.environment.stop()

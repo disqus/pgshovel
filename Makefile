@@ -23,6 +23,14 @@ develop: build
 	pip install -e .
 
 check:
-	pyflakes $$(find $(PYTHON_OUT) -name \*.py -not -name \*_pb2.py)
+	pyflakes $$(find $(PYTHON_OUT) tests -name \*.py -not -name \*_pb2.py)
 
-.PHONY: all clean build develop install check
+test:
+	python setup.py test
+
+test-xunit: build
+	rm -f coverage.xml
+	py.test --junitxml=$(XUNIT_FILE) --cov pgshovel --cov tests/ --cov-report=xml tests/
+	mv coverage.xml $(COVERAGE_FILE)
+
+.PHONY: all clean build develop install check test

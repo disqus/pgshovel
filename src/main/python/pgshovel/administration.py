@@ -1,26 +1,20 @@
-import code
 import collections
+import functools
+import hashlib
 import logging
-import sys
+import operator
+import posixpath
 from contextlib import contextmanager
 from string import Template
 
-from pgshovel.commands import (
-    FormatOption,
-    Option,
-    command,
-    formatters,
-)
-from pgshovel.groups import Group
-from pgshovel.interfaces.groups_pb2 import (
-    DatabaseConfiguration,
-    GroupConfiguration,
-)
+import psycopg2
+
+from pgshovel.interfaces.groups_pb2 import GroupConfiguration
 from pgshovel.utilities.postgresql import (
     Transaction,
     managed,
 )
-from pgshovel.utilities.protobuf import TextCodec
+from pgshovel.utilities.protobuf import BinaryCodec
 from pgshovel.utilities.templates import resource_string
 from pgshovel.utilities.zookeeper import commit
 
@@ -28,16 +22,27 @@ from pgshovel.utilities.zookeeper import commit
 logger = logging.getLogger(__name__)
 
 
-def __get_connection_for_dsn(dsn):
-    import psycopg2
-    return psycopg2.connect(dsn)
+def get_connection_for_database(database):
+    """
+    Returns a ``psycopg2.connection`` for a ``DatabaseConfiguration``.
+    """
+    return psycopg2.connect(database.connection.dsn)
 
 
-def __get_database_connection(group):
-    return __get_connection_for_dsn(group.configuration.database.connection.dsn)
+def get_version(configuration):
+    """
+    Returns a MD5 hash (version identifier) for a configuration object.
+    """
+    return hashlib.md5(configuration.SerializeToString()).hexdigest()
 
 
-def __configure_database(application, cursor):
+def configure_database(application, cursor):
+    """
+    Configures a database (the provided cursor) for use with pgshovel.
+
+    This function can also be used to repair a broken installation, or update
+    an existing installation's capture function.
+    """
     # Install PGQ if it doesn't already exist.
     logger.info('Creating PGQ extension...')
     cursor.execute('CREATE EXTENSION IF NOT EXISTS pgq')
@@ -59,201 +64,215 @@ def __configure_database(application, cursor):
     )
 
 
-def __trigger_name(application, group):
-    return '_pgshovel_%s_%s_capture' % (application.configuration.name, group.name)
+def trigger_name(application, name):
+    return '_pgshovel_%s_%s_capture' % (application.configuration.name, name)
 
 
-def __queue_name(application, group):
-    return '%s.%s' % (application.schema, group.name)
+def queue_name(application, name):
+    return '%s.%s' % (application.schema, name)
 
 
-def __configure_group(application, cursor, group):
-    # Create the transaction queue if it doesn't already exist.
-    logger.info('Creating transaction queue...')
-    cursor.execute("SELECT pgq.create_queue(%s)", (__queue_name(application, group),))
-
+def collect_tables(table):
+    """
+    Returns a dictionary, keyed by table name, containing all columns that
+    are watched in the associated table.
+    """
     tables = collections.defaultdict(set)
 
-    def __collect_columns(table):
+    def __collect(table):
         columns = tables[table.name]
         columns.add(table.primary_key)
         columns.update(table.columns)
 
         for join in table.joins:
             tables[join.table.name].add(join.foreign_key)
-            __collect_columns(join.table)
+            __collect(join.table)
 
-    __collect_columns(group.configuration.table)
+    __collect(table)
 
-    # Install the trigger(s) on the destination table (always replace.)
-    name = __trigger_name(application, group)
-    for table, columns in tables.items():
+    return tables
+
+
+def configure_group(application, cursor, name, configuration):
+    """
+    Configures a capture group using the provided name and configuration data.
+    """
+    # Create the transaction queue if it doesn't already exist.
+    logger.info('Creating transaction queue...')
+    cursor.execute("SELECT pgq.create_queue(%s)", (queue_name(application, name),))
+
+    tables = collect_tables(configuration.table)
+
+    trigger = trigger_name(application, name)
+
+    def create_trigger(table, columns):
+        logger.info('Installing capture trigger on %s...', table)
+
         statement = """
             CREATE TRIGGER %(name)s
             AFTER INSERT OR UPDATE OF %(columns)s OR DELETE
             ON %(table)s
             FOR EACH ROW EXECUTE PROCEDURE %(schema)s.capture(%%s, %%s)
         """ % {
-            'name': name,
+            'name': trigger,
             'columns': ', '.join(columns),
             'table': table,
             'schema': application.schema,
         }
 
-        logger.info('Installing capture trigger on %s...', table)
-        cursor.execute("DROP TRIGGER IF EXISTS %s ON %s" % (name, table))
-        cursor.execute(statement, (__queue_name(application, group), group.version))
+        cursor.execute("DROP TRIGGER IF EXISTS %s ON %s" % (trigger, table))
+        cursor.execute(statement, (
+            queue_name(application, name),
+            get_version(configuration)),
+        )
+
+    for table, columns in tables.items():
+        create_trigger(table, columns)
 
 
-def __drop_trigger(application, cursor, group, table):
+def drop_trigger(application, cursor, name, table):
+    """
+    Drops a capture trigger on the provided table for the specified group.
+    """
     logger.info('Dropping capture trigger on %s...', table)
-    cursor.execute('DROP TRIGGER %s ON %s' % (__trigger_name(application, group), table))
+    cursor.execute('DROP TRIGGER %s ON %s' % (trigger_name(application, name), table))
 
 
-def __unconfigure_group(application, cursor, group):
+def unconfigure_group(application, cursor, name, configuration):
+    """
+    Removes all triggers and capture queue for the provided group name and
+    configuration.
+    """
     # Drop the transaction queue if it exists.
     logger.info('Dropping transaction queue...')
-    cursor.execute("SELECT pgq.drop_queue(%s)", (__queue_name(application, group),))
+    cursor.execute("SELECT pgq.drop_queue(%s)", (queue_name(application, name),))
 
     # Drop the triggers on the destination table.
-    def __uninstall_triggers(table):
-        __drop_trigger(application, cursor, group, table.name)
+    def uninstall_triggers(table):
+        drop_trigger(application, cursor, name, table.name)
         for join in table.joins:
-            __uninstall_triggers(join.table)
+            uninstall_triggers(join.table)
 
-    __uninstall_triggers(group.configuration.table)
-
-
-@command
-def shell(options, application):
-    exports = {
-        'application': application,
-        'environment': application.environment,
-    }
-    return code.interact(local=exports)
+    uninstall_triggers(configuration.table)
 
 
-@command(description="Initializes a new cluster in ZooKeeper.", start=False)
-def initialize_cluster(options, application):
+def initialize_cluster(application):
+    """
+    Initialize a pgshovel cluster in ZooKeeper.
+    """
     logger.info('Creating a new cluster for %s...', application)
-    application.environment.zookeeper.start()
+
     ztransaction = application.environment.zookeeper.transaction()
     ztransaction.create(application.path)
-    ztransaction.create(application.groups.path)
+    ztransaction.create(posixpath.join(application.path, 'groups'))
     commit(ztransaction)
 
 
-@command(
-    description="Lists the registered capture groups.",
-    options=(FormatOption,),
-)
-def list_groups(options, application):
-    # TODO: support validation
-    rows = []
-    for group in list(application.groups.all()):
-        rows.append((
-            group.name,
-            group.configuration.database.name,
-            group.configuration.table.name,
-            group.version,
-        ))
-
-    print formatters[options.format](rows, headers=('name', 'database', 'table', 'version'))
+def get_group_path(application, name):
+    return posixpath.join(application.path, 'groups', name)
 
 
-def __get_codec(options, cls):
-    # TODO: allow switching between text and binary codecs as an option
-    return TextCodec(cls)
+def create_group(application, name, configuration):
+    """
+    Create a capture group for the provided configuration.
+    """
+    connection = get_connection_for_database(configuration.database)
 
-
-@command(description="Creates a new capture group.")
-def create_group(options, application, name):
-    configuration = __get_codec(options, GroupConfiguration).decode(sys.stdin.read())
-
-    group = Group(name, configuration)
-
-    connection = __get_database_connection(group)
-    transaction = Transaction(connection, 'create-group:%s' % (group.name,))
+    transaction = Transaction(connection, 'create-group:%s' % (name,))
     with connection.cursor() as cursor:
-        __configure_database(application, cursor)
-        __configure_group(application, cursor, group)
+        configure_database(application, cursor)
+        configure_group(application, cursor, name, configuration)
 
     with transaction:
-        application.groups.set(group)
+        application.environment.zookeeper.create(
+            get_group_path(application, name),
+            BinaryCodec(GroupConfiguration).encode(configuration),
+        )
 
 
-@command(description="Provides details about a capture group.")
-def inspect_group(options, application, name):
-    group = application.groups.get(name)
-    sys.stdout.write(__get_codec(options, GroupConfiguration).encode(group.configuration))
-    sys.stderr.write(group.version)
+class VersionedGroup(collections.namedtuple('VersionedGroup', 'name version')):
+    @classmethod
+    def expand(cls, value):
+        bits = value.split('@', 1)
+        if len(bits) == 1:
+            return cls(bits[0], None)
+        elif len(bits) == 2:
+            return cls(bits[0], bits[1])
+        else:
+            raise AssertionError('Invalid group identifier: %r' % (value,))
 
 
-def collect_tables(table):
-    tables = set()
+def fetch_groups(application, names):
+    groups = map(VersionedGroup.expand, names)
+    paths = map(
+        functools.partial(get_group_path, application),
+        map(operator.attrgetter('name'), groups),
+    )
+    futures = map(application.environment.zookeeper.get_async, paths)
 
-    def _collect(table):
-        tables.add(table.name)
-        for join in table.joins:
-            _collect(join.table)
+    results = []
+    decode = BinaryCodec(GroupConfiguration).decode
+    for group, future in zip(groups, futures):
+        data, stat = future.get()
+        configuration = decode(data)
+        assert group.version is None or group.version == get_version(configuration), \
+            'versions do not match (%s and %s)' % (group.version, get_version(configuration))
+        results.append((group.name, (configuration, stat)))
 
-    _collect(table)
-
-    return tables
+    return results
 
 
-@command(description="Updates a capture group.")
-def update_group(options, application, name):
-    # TODO: Implement version checking.
-    configuration = __get_codec(options, GroupConfiguration).decode(sys.stdin.read())
-
-    group = application.groups.get(name)
+def update_group(application, name, updated_configuration):
+    (name, (current_configuration, stat)) = fetch_groups(application, (name,))[0]
 
     transactions = []
 
-    current_tables = collect_tables(group.configuration.table)
-    updated_tables = collect_tables(configuration.table)
+    current_tables = set(collect_tables(current_configuration.table))
+    updated_tables = set(collect_tables(updated_configuration.table))
 
-    source = __get_database_connection(group)
-    transactions.append(Transaction(source, 'update-group:%s' % (group.name,)))
-
-    if group.configuration.database != configuration.database:
+    source_connection = get_connection_for_database(current_configuration.database)
+    transactions.append(Transaction(source_connection, 'update-group:%s' % (name,)))
+    if current_configuration.database != updated_configuration.database:
         # If the database configuration has changed, we need to ensure that the
-        # new database has the basic installation, and that all triggers were
-        # dropped from the source database -- basically, that the group has
-        # been entirely removed from the destination database.
-        destination = __get_connection_for_dsn(configuration.database.connection.dsn)
-        transactions.append(Transaction(destination, 'update-group:%s' % (group.name,)))
-        with destination.cursor() as cursor:
-            __configure_database(application, cursor)
+        # new database has the basic installation, and that all triggers are
+        # dropped from the source database for this group.
+        destination_connection = get_connection_for_database(updated_configuration.database)
+        transactions.append(Transaction(destination_connection, 'update-group:%s' % (name,)))
+        with destination_connection.cursor() as cursor:
+            configure_database(application, cursor)
 
-        with source.cursor() as cursor:
-            __unconfigure_group(application, cursor, group)
+        with source_connection.cursor() as cursor:
+            unconfigure_group(application, cursor, name, current_configuration)
     else:
         # If the database configuration has *not* changed, we need to ensure
         # that any tables that are no longer monitored have their triggers
-        # removed before continuining.
-        destination = source
+        # removed before continuing.
+        destination_connection = source_connection
 
-        with source.cursor() as cursor:
+        with source_connection.cursor() as cursor:
             dropped_tables = current_tables - updated_tables
             for table in dropped_tables:
-                __drop_trigger(application, cursor, group, table)
+                drop_trigger(application, cursor, name, table)
 
-    group.configuration = configuration
-
-    with destination.cursor() as cursor:
-        __configure_group(application, cursor, group)
+    with destination_connection.cursor() as cursor:
+        configure_group(application, cursor, name, updated_configuration)
 
     with managed(transactions):
-        application.groups.set(group)
+        application.environment.zookeeper.set(
+            get_group_path(application, name),
+            BinaryCodec(GroupConfiguration).encode(updated_configuration),
+            version=stat.version,
+        )
 
 
-def __collect_by_dsn(groups):
-    sources = collections.defaultdict(set)
-    for group in groups:
-        sources[group.configuration.database.connection.dsn].add(group)
+def collect_groups_by_database(groups):
+    # TODO: Add a docstring here, this is kind of weird.
+    # TODO: Eventually make use DatabaseConfiguration as keys, but they aren't hashable.
+    sources = collections.defaultdict(dict)
+    for name, (configuration, stat) in groups.items():
+        sources[configuration.database.connection.dsn][name] = (configuration, stat)
     return sources
+
 
 
 @contextmanager
@@ -261,77 +280,79 @@ def noop():
     yield
 
 
-@command(
-    options=(
-        Option('--force', action='store_true', help='Skip database transactions on source databases.'),
-    ),
-)
-def move_groups(options, application, *names):
-    # TODO: Implement version checking.
+def move_groups(application, names, database, force=False):
+    """
+    Moves a collection of groups (provided by name) to the database
+    configuration provided.
+    """
     assert names, 'at least one group must be provided'
 
-    database = __get_codec(options, DatabaseConfiguration).decode(sys.stdin.read())
-
-    groups = map(application.groups.get, names)
+    original = dict(fetch_groups(application, names))
 
     transactions = []
 
-    if not options.force:
+    # TODO: Rather than make this totally skip removal, it probably makes sense
+    # to allow a "best effort" cleanup that doesn't fail the task if the
+    # database can't be accessed.
+    if not force:
         # Remove all of the triggers from the previous database.
         # TODO: Figure out how this behavior works with consumers that are already
         # connected -- this should fail, as it is today.
-        for dsn, groups_for_source in __collect_by_dsn(groups).items():
-            connection = __get_connection_for_dsn(dsn)
-            transactions.append(Transaction(connection, 'move-groups:source'))
-            with connection.cursor() as cursor:
-                for group in groups_for_source:
-                    __unconfigure_group(application, cursor, group)
+        for dsn, groups in collect_groups_by_database(original).items():
+            source_connection = psycopg2.connect(dsn)
+            transactions.append(Transaction(source_connection, 'move-groups:source'))
+            with source_connection.cursor() as cursor:
+                for name, (configuration, stat) in groups.items():
+                    unconfigure_group(application, cursor, name, configuration)
 
-    # Overwrite the group's database with the updated values.
-    for group in groups:
-        group.configuration.database.CopyFrom(database)
+    updated = {}
+    for name, (configuration, stat) in original.items():
+        c = GroupConfiguration()
+        c.CopyFrom(configuration)
+        c.database.CopyFrom(database)
+        updated[name] = (c, stat)
 
     # Add the triggers to the destination.
-    connection = __get_connection_for_dsn(database.connection.dsn)
-    transactions.append(Transaction(connection, 'move-groups:destination'))
-    with connection.cursor() as cursor:
-        __configure_database(application, cursor)
-        for group in groups:
-            __configure_group(application, cursor, group)
+    destination_connection = get_connection_for_database(database)
+    transactions.append(Transaction(destination_connection, 'move-groups:destination'))
+    with destination_connection.cursor() as cursor:
+        configure_database(application, cursor)
+        for name, (configuration, stat) in updated.items():
+            configure_group(application, cursor, name, configuration)
 
     with managed(transactions):
         ztransaction = application.environment.zookeeper.transaction()
-        for group in groups:
-            application.groups.set(group, ztransaction)
+        for name, (configuration, stat) in updated.items():
+            ztransaction.set_data(
+                get_group_path(application, name),
+                BinaryCodec(GroupConfiguration).encode(configuration),
+                version=stat.version,
+            )
         commit(ztransaction)
 
 
-@command(
-    description="Drops capture group(s).",
-    options=(
-        Option('--force', action='store_true', help='Skip database transactions.'),
-    ),
-)
-def drop_groups(options, application, *names):
-    # TODO: Implement version checking.
+def drop_groups(application, names, force=False):
     assert names, 'at least one group must be provided'
 
-    groups = map(application.groups.get, names)
+    results = dict(fetch_groups(application, names))
 
-    if not options.force:
+    if not force:
         transactions = []
-        for dsn, groups_for_source in __collect_by_dsn(groups).items():
-            connection = __get_connection_for_dsn(dsn)
+        for dsn, groups in collect_groups_by_database(results).items():
+            connection = psycopg2.connect(dsn)
             transactions.append(Transaction(connection, 'drop-groups'))
             with connection.cursor() as cursor:
-                for group in groups_for_source:
-                    __unconfigure_group(application, cursor, group)
+                for name, (configuration, stat) in groups.items():
+                    unconfigure_group(application, cursor, name, configuration)
         manager = managed(transactions)
     else:
         manager = noop()
 
     with manager:
         ztransaction = application.environment.zookeeper.transaction()
-        for group in groups:
-            application.groups.delete(group, ztransaction)
+        for name, (configuration, stat) in results.iteritems():
+            ztransaction.delete(
+                get_group_path(application, name),
+                version=stat.version,
+            )
         commit(ztransaction)

@@ -1,3 +1,9 @@
+try:
+    # See: http://bugs.python.org/issue15881#msg170215
+    import multiprocessing
+except ImportError:
+    pass
+
 import os
 from setuptools import (
     find_packages,
@@ -32,14 +38,14 @@ setup(
     ),
     entry_points={
         'console_scripts': [
-            'pgshovel-create-group = pgshovel.administration:create_group',
-            'pgshovel-drop-groups = pgshovel.administration:drop_groups',
-            'pgshovel-initialize-cluster = pgshovel.administration:initialize_cluster',
-            'pgshovel-inspect-group = pgshovel.administration:inspect_group',
-            'pgshovel-list-groups = pgshovel.administration:list_groups',
-            'pgshovel-move-groups = pgshovel.administration:move_groups',
-            'pgshovel-shell = pgshovel.administration:shell',
-            'pgshovel-update-group = pgshovel.administration:update_group',
+            'pgshovel-create-group = pgshovel.cli:create_group',
+            'pgshovel-drop-groups = pgshovel.cli:drop_groups',
+            'pgshovel-initialize-cluster = pgshovel.cli:initialize_cluster',
+            'pgshovel-inspect-group = pgshovel.cli:inspect_group',
+            'pgshovel-list-groups = pgshovel.cli:list_groups',
+            'pgshovel-move-groups = pgshovel.cli:move_groups',
+            'pgshovel-shell = pgshovel.cli:shell',
+            'pgshovel-update-group = pgshovel.cli:update_group',
         ],
     },
     packages=find_packages(PACKAGE_DIR),
@@ -52,5 +58,6 @@ setup(
     },
     tests_require=(
         'pytest',
+        'pytest-cov',
     ),
 )

@@ -82,8 +82,15 @@ def managed(transactions):
             prepared.append(transaction)
         yield
     except Exception:
+        # If an exception is raised (for any reason) during the transaction
+        # block, roll back all of the transations that have already been
+        # prepared.
         for transaction in prepared:
             transaction.rollback()
-    else:
-        for transaction in prepared:
-            transaction.commit()
+
+        raise
+
+    # If we got this far, then everything is OK and we can finalize all
+    # transactions.
+    for transaction in prepared:
+        transaction.commit()
