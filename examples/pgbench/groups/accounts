@@ -1,0 +1,5 @@
+name: "pgbench_accounts"
+primary_key: "aid"
+columns: "bid"
+columns: "abalance"
+columns: "filler"

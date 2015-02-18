@@ -1,0 +1,4 @@
+name: "pgbench_branches"
+primary_key: "bid"
+columns: "bbalance"
+columns: "filler"
