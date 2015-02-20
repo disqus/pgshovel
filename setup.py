@@ -30,6 +30,7 @@ class PyTest(test):
 setup(
     name='pgshovel',
     install_requires=(
+        'futures',
         'kazoo',
         'pgqueue',
         'protobuf',

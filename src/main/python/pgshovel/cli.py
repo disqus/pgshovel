@@ -1,5 +1,4 @@
 import code
-import posixpath
 import sys
 
 from pgshovel import administration
@@ -47,7 +46,7 @@ def initialize_cluster(options, application):
 def list_groups(options, application):
     with application:
         zookeeper = application.environment.zookeeper
-        names = zookeeper.get_children(posixpath.join(application.path, 'groups'))
+        names = zookeeper.get_children(application.get_group_path())
 
         rows = []
         for name, (configuration, stat) in administration.fetch_groups(application, names):

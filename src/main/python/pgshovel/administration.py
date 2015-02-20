@@ -3,7 +3,6 @@ import functools
 import hashlib
 import logging
 import operator
-import posixpath
 from contextlib import contextmanager
 from string import Template
 
@@ -68,10 +67,6 @@ def trigger_name(application, name):
     return '_pgshovel_%s_%s_capture' % (application.configuration.name, name)
 
 
-def queue_name(application, name):
-    return '%s.%s' % (application.schema, name)
-
-
 def collect_tables(table):
     """
     Returns a dictionary, keyed by table name, containing all columns that
@@ -99,7 +94,7 @@ def configure_group(application, cursor, name, configuration):
     """
     # Create the transaction queue if it doesn't already exist.
     logger.info('Creating transaction queue...')
-    cursor.execute("SELECT pgq.create_queue(%s)", (queue_name(application, name),))
+    cursor.execute("SELECT pgq.create_queue(%s)", (application.get_queue_name(name),))
 
     tables = collect_tables(configuration.table)
 
@@ -122,7 +117,7 @@ def configure_group(application, cursor, name, configuration):
 
         cursor.execute("DROP TRIGGER IF EXISTS %s ON %s" % (trigger, table))
         cursor.execute(statement, (
-            queue_name(application, name),
+            application.get_queue_name(name),
             get_version(configuration)),
         )
 
@@ -145,7 +140,7 @@ def unconfigure_group(application, cursor, name, configuration):
     """
     # Drop the transaction queue if it exists.
     logger.info('Dropping transaction queue...')
-    cursor.execute("SELECT pgq.drop_queue(%s)", (queue_name(application, name),))
+    cursor.execute("SELECT pgq.drop_queue(%s)", (application.get_queue_name(name),))
 
     # Drop the triggers on the destination table.
     def uninstall_triggers(table):
@@ -164,12 +159,8 @@ def initialize_cluster(application):
 
     ztransaction = application.environment.zookeeper.transaction()
     ztransaction.create(application.path)
-    ztransaction.create(posixpath.join(application.path, 'groups'))
+    ztransaction.create(application.get_group_path())
     commit(ztransaction)
-
-
-def get_group_path(application, name):
-    return posixpath.join(application.path, 'groups', name)
 
 
 def create_group(application, name, configuration):
@@ -185,7 +176,7 @@ def create_group(application, name, configuration):
 
     with transaction:
         application.environment.zookeeper.create(
-            get_group_path(application, name),
+            application.get_group_path(name),
             BinaryCodec(GroupConfiguration).encode(configuration),
         )
 
@@ -205,7 +196,7 @@ class VersionedGroup(collections.namedtuple('VersionedGroup', 'name version')):
 def fetch_groups(application, names):
     groups = map(VersionedGroup.expand, names)
     paths = map(
-        functools.partial(get_group_path, application),
+        application.get_group_path,
         map(operator.attrgetter('name'), groups),
     )
     futures = map(application.environment.zookeeper.get_async, paths)
@@ -259,7 +250,7 @@ def update_group(application, name, updated_configuration):
 
     with managed(transactions):
         application.environment.zookeeper.set(
-            get_group_path(application, name),
+            application.get_group_path(name),
             BinaryCodec(GroupConfiguration).encode(updated_configuration),
             version=stat.version,
         )
@@ -324,7 +315,7 @@ def move_groups(application, names, database, force=False):
         ztransaction = application.environment.zookeeper.transaction()
         for name, (configuration, stat) in updated.items():
             ztransaction.set_data(
-                get_group_path(application, name),
+                application.get_group_path(name),
                 BinaryCodec(GroupConfiguration).encode(configuration),
                 version=stat.version,
             )
@@ -352,7 +343,7 @@ def drop_groups(application, names, force=False):
         ztransaction = application.environment.zookeeper.transaction()
         for name, (configuration, stat) in results.iteritems():
             ztransaction.delete(
-                get_group_path(application, name),
+                application.get_group_path(name),
                 version=stat.version,
             )
         commit(ztransaction)

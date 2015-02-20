@@ -1,3 +1,6 @@
+import functools
+import posixpath
+
 from kazoo.client import KazooClient
 
 
@@ -54,3 +57,17 @@ class Application(object):
 
     def stop(self):
         self.environment.stop()
+
+    @property
+    def get_group_path(self):
+        return functools.partial(posixpath.join, self.path, 'groups')
+
+    @property
+    def get_consumer_path(self):
+        return functools.partial(posixpath.join, self.path, 'consumers')
+
+    def get_ownership_lock_path(self, consumer_group):
+        return functools.partial(self.get_consumer_path ,consumer_group, 'ownership')
+
+    def get_queue_name(self, group):
+        return 'pgshovel:%s:%s' % (self.configuration.name, group)

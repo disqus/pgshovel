@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import pytest
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
+
 from pgshovel.administration import (
     create_group,
     drop_groups,
@@ -41,8 +42,12 @@ logging.basicConfig(
 
 
 @contextmanager
-def TemporaryDatabase(alias):
-    name = 'pgshovel_test_%s' % (uuid.uuid1().hex,)
+def TemporaryDatabase(alias=None):
+    id = uuid.uuid1().hex
+    if alias is None:
+        alias = id
+
+    name = 'pgshovel_test_%s' % (id,)
     subprocess.check_call(('createdb', name))
     dsn = 'postgresql:///%s?application_name=pgshovel-test-%s' % (name, os.getpid())
     try:
