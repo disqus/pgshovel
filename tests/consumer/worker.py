@@ -186,10 +186,10 @@ def test_consumer_lifecycle(application, database):
             consumer.batches.get(timeout=1)
 
     # Stop the consumer.
-    consumer.stop()
+    consumer.stop(5)
+    consumer.result()
 
     # Check to make sure that the lock is released.
-    consumer.result()  # wait for the consumer to stop, and report any errors
     assert not consumer._ownership_lock.is_acquired, 'consumer should release lock after stopping'
 
     connection.close()
@@ -212,7 +212,7 @@ def test_coordinator_lifecycle(application, database):
     coordinator.start()
 
     # Subscribe to a group.
-    consumer = coordinator.subscribe(group, configuration).result(1)
+    consumer = coordinator.subscribe(group, configuration, timeout=1)
     assert consumer.ready.wait(3), 'consumer not ready before timeout'
 
     # Check consumer ownership.
@@ -220,24 +220,25 @@ def test_coordinator_lifecycle(application, database):
 
     # Update the group configuration.
     updated_configuration = configuration.table.columns.append('lol')
-    coordinator.subscribe(group, updated_configuration).result(1)
+    coordinator.subscribe(group, updated_configuration, timeout=1)
 
     assert consumer.configuration == updated_configuration, 'configuration should be updated'
 
     # Unsubscribe from the group.
-    consumer = coordinator.unsubscribe(group).result(1)
-    consumer.join(3)
+    consumer = coordinator.unsubscribe(group, timeout=1)
+    consumer.result(3)
     assert not consumer.running(), 'consumer should stop after unsubscribe'
     assert not consumer._ownership_lock.is_acquired, 'ownership lock should be released after unsubscribe'
 
-    consumer = coordinator.subscribe(group, configuration).result(1)
+    consumer = coordinator.subscribe(group, configuration, timeout=1)
     assert consumer.ready.wait(3), 'consumer not ready before timeout'
 
     # Stop the consumer.
-    coordinator.stop()
-    coordinator.result()  # ensure it exited gracefully (did not raise)
+    coordinator.stop(timeout=5)
+    coordinator.result()
 
     assert not consumer.running(), 'consumer should be stopped'
+
 
 def test_coordinator_consumer_failure_handling(application, database):
     groups = setup_application(application, database)
@@ -265,7 +266,7 @@ def test_coordinator_consumer_failure_handling(application, database):
     # Subscribe to a group.
     group = 'users'
     configuration = groups[group]
-    consumer = coordinator.subscribe(group, configuration).result()
+    consumer = coordinator.subscribe(group, configuration, timeout=1)
 
     die.set()
 

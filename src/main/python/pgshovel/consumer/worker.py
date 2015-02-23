@@ -27,6 +27,11 @@ def use_defer(method):
     return wrapped
 
 
+def check_stop(runnable):
+    runnable.stop()
+    runnable.result()
+
+
 class Consumer(Runnable):
     """
     Manages consumption for an individual capture group.
@@ -83,7 +88,7 @@ class Consumer(Runnable):
         logger.debug('Registering consumer...')
         with self.database() as database, database.cursor() as cursor:
             statement = "SELECT * FROM pgq.register_consumer(%s, %s)"
-            cursor.execute(statement, ((self.application.get_queue_name(self.group)), self.consumer_group_identifier))
+            cursor.execute(statement, (self.application.get_queue_name(self.group), self.consumer_group_identifier))
             (new,) = cursor.fetchone()
             logger.debug('Registered as queue consumer using %s registration.', 'new' if new else 'existing')
             database.commit()
@@ -125,11 +130,16 @@ class Consumer(Runnable):
                     self.batches.put((events, finish))
                     connection.commit()
 
-    def stop(self):
+    def stop_async(self):
         """
         Stop the consumer, releasing ownership of the capture group.
         """
+        logger.debug('Stopping...')
         self.__stop_requested.set()
+
+    def stop(self, timeout=None):
+        self.stop_async()
+        return self.join(timeout)
 
 
 class Coordinator(Runnable):
@@ -140,7 +150,7 @@ class Coordinator(Runnable):
     Consumer = Consumer
 
     def __init__(self, application, database, consumer_group_identifier, consumer_identifier):
-        super(Coordinator, self).__init__(name='coordinator')
+        super(Coordinator, self).__init__(name='coordinator', daemon=True)
 
         self.application = application
         self.database = database
@@ -177,19 +187,12 @@ class Coordinator(Runnable):
                 )
                 consumer.start()
                 consumer.ready.wait()  # TODO: Only block until the consumer is started, not that it is ready
-
-                def stop():
-                    consumer.stop()
-                    consumer.result()  # TODO: Don't block forever
-
-                defer(stop)
-
+                defer(functools.partial(check_stop, consumer))  # TODO: Use non-blocking shutdown
             return consumer
 
         def unsubscribe(name):
             consumer = self.__consumers.pop(name)
             consumer.stop()
-            consumer.result()  # TODO: Don't block forever
             return consumer
 
         operations = {
@@ -220,13 +223,18 @@ class Coordinator(Runnable):
                     except Empty:
                         pass  # This consumer doesn't have anything for us.
 
-    def stop(self):
+    def stop_async(self):
         """
         Prepare the coordinator to stop.
         """
+        logger.debug('Stopping...')
         self.__stop_requested.set()
 
-    def subscribe(self, name, configuration):
+    def stop(self, timeout=None):
+        self.stop_async()
+        return self.join(timeout)
+
+    def subscribe_async(self, name, configuration):
         """
         Request that a the coordinator subscribes or updates a capture group.
         """
@@ -234,10 +242,16 @@ class Coordinator(Runnable):
         self.__queue.put(('subscribe', (name, configuration), response))
         return response
 
-    def unsubscribe(self, name):
+    def subscribe(self, name, configuration, timeout=None):
+        return self.subscribe_async(name, configuration).result(timeout)
+
+    def unsubscribe_async(self, name):
         """
         Request that consumer unsubscribes from a capture group.
         """
         response = Future()
         self.__queue.put(('unsubscribe', (name,), response))
         return response
+
+    def unsubscribe(self, name, timeout=None):
+        return self.unsubscribe_async(name).result(timeout)
