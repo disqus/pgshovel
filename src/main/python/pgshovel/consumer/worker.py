@@ -8,6 +8,7 @@ from Queue import (
 from concurrent.futures import Future
 
 from kazoo.recipe.lock import Lock
+from CloseableQueue import CloseableQueue
 
 from pgshovel.utilities.async import (
     Runnable,
@@ -80,8 +81,9 @@ class Consumer(Runnable):
         self._ownership_lock.acquire()  # TODO: Don't block stop request.
 
         def release():
-            logger.debug('Relinquishing capture group ownership...')
+            logger.debug('Releasing capture group ownership...')
             self._ownership_lock.release()
+            logger.debug('Released ownership.')
 
         defer(release)
 
@@ -134,7 +136,6 @@ class Consumer(Runnable):
         """
         Stop the consumer, releasing ownership of the capture group.
         """
-        logger.debug('Stopping...')
         self.__stop_requested.set()
 
     def stop(self, timeout=None):
@@ -150,14 +151,14 @@ class Coordinator(Runnable):
     Consumer = Consumer
 
     def __init__(self, application, database, consumer_group_identifier, consumer_identifier):
-        super(Coordinator, self).__init__(name='coordinator', daemon=True)
+        super(Coordinator, self).__init__(name='coordinator:%s' % (database,), daemon=True)
 
         self.application = application
         self.database = database
         self.consumer_group_identifier = consumer_group_identifier
         self.consumer_identifier = consumer_identifier
 
-        self.__queue = Queue()
+        self.__queue = CloseableQueue()
         self.__consumers = {}  # <group name> -> Consumer
 
         self.__stop_requested = threading.Event()
@@ -185,14 +186,16 @@ class Coordinator(Runnable):
                     name,
                     configuration,
                 )
+                logger.debug('Starting %r...', consumer)
                 consumer.start()
-                consumer.ready.wait()  # TODO: Only block until the consumer is started, not that it is ready
                 defer(functools.partial(check_stop, consumer))  # TODO: Use non-blocking shutdown
             return consumer
 
         def unsubscribe(name):
             consumer = self.__consumers.pop(name)
+            logger.debug('Stopping %r...', consumer)
             consumer.stop()
+            logger.debug('Stopped %r.', consumer)
             return consumer
 
         operations = {
@@ -200,9 +203,12 @@ class Coordinator(Runnable):
             'unsubscribe': unsubscribe,
         }
 
-        while True:
+        stopping = False
+        while not stopping:
             if self.__stop_requested.wait(0.01):
-                break
+                logger.debug('Stop requested, flushing queue and preparing to exit...')
+                self.__queue.close()
+                stopping = True
 
             # Perform all pending operations in the control queue.
             # TODO: Refactor the control logic into something that more closely represents a channel.
@@ -218,6 +224,7 @@ class Coordinator(Runnable):
 
                     try:
                         events, finish = consumer.batches.get(False)
+                        logger.debug('Fetched %s events from %s.', len(events), consumer)
                         # TODO: Pass events to the handler.
                         finish(connection)
                     except Empty:
@@ -227,7 +234,6 @@ class Coordinator(Runnable):
         """
         Prepare the coordinator to stop.
         """
-        logger.debug('Stopping...')
         self.__stop_requested.set()
 
     def stop(self, timeout=None):

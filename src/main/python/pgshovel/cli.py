@@ -1,5 +1,6 @@
 import code
 import sys
+import uuid
 
 from pgshovel import administration
 from pgshovel.interfaces.groups_pb2 import (
@@ -16,6 +17,7 @@ from pgshovel.utilities.protobuf import (
     BinaryCodec,
     TextCodec,
 )
+from pgshovel.consumer import supervisor
 
 
 def __get_codec(options, cls):
@@ -103,3 +105,17 @@ def move_groups(options, application, *names):
 def drop_groups(options, application, *names):
     with application:
         return administration.drop_groups(application, names, force=options.force)
+
+
+@command(
+    options=(
+        Option('--group', default='default', help='The consumer group identifier.'),
+    ),
+)
+def consumer(options, application, identifier=None):
+    with application:
+        return supervisor.run(
+            application,
+            options.group,
+            identifier if identifier is not None else uuid.uuid1().hex,
+        )

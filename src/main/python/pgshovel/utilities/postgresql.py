@@ -118,6 +118,16 @@ class ManagedConnection(object):
         # once.
         self.__lock = threading.Lock()
 
+    def __str__(self):
+        return '%s' % (self.dsn,)
+
+    def __repr__(self):
+        return '<%s: %s (%s)>' % (
+            type(self).__name__,
+            self.dsn,
+            self.__connection or 'closed',
+        )
+
     @property
     def closed(self):
         with self.__meta_lock:

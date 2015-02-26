@@ -1,12 +1,17 @@
 import functools
+import logging
 import threading
 from concurrent.futures import Future
 from Queue import Queue
 
 from kazoo.recipe.watchers import ChildrenWatch
+from CloseableQueue import CloseableQueue
 
 from pgshovel.utilities.async import Runnable
 from pgshovel.utilities.partitioning import distribute
+
+
+logger = logging.getLogger(__name__)
 
 
 class Rebalancer(Runnable):
@@ -19,7 +24,7 @@ class Rebalancer(Runnable):
         self.application = application
         self.consumer_group_identifier = consumer_group_identifier
 
-        self.__subscription_requests = Queue()
+        self.__subscription_requests = CloseableQueue()
 
         self.__stop_requested = threading.Event()
 
@@ -59,9 +64,12 @@ class Rebalancer(Runnable):
         assignments = {}
         subscriptions = set()
 
-        while True:
+        stopping = False
+        while not stopping:
             if self.__stop_requested.wait(0.01):
-                break
+                logger.debug('Stop requested, flushing queue and preparing to exit...')
+                self.__subscription_requests.close()
+                stopping = True
 
             while not self.__subscription_requests.empty():
                 # Process all subscription requests.
@@ -73,9 +81,11 @@ class Rebalancer(Runnable):
             if not consumer_updates.empty() or not group_updates.empty():
                 while not consumer_updates.empty():
                     consumers = consumer_updates.get()
+                    logger.debug('Consumers: %r', consumers)
 
                 while not group_updates.empty():
                     groups = group_updates.get()
+                    logger.debug('Groups: %r', groups)
 
                 # TODO: This could possibly **become** none if the nodes are
                 # deleted (the cluster was deleted), in that case it probably

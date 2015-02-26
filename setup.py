@@ -30,6 +30,7 @@ class PyTest(test):
 setup(
     name='pgshovel',
     install_requires=(
+        'CloseableQueue',
         'futures',
         'kazoo',
         'pgqueue',
@@ -39,6 +40,7 @@ setup(
     ),
     entry_points={
         'console_scripts': [
+            'pgshovel-consumer = pgshovel.cli:consumer',
             'pgshovel-create-group = pgshovel.cli:create_group',
             'pgshovel-drop-groups = pgshovel.cli:drop_groups',
             'pgshovel-initialize-cluster = pgshovel.cli:initialize_cluster',

@@ -84,7 +84,7 @@ class Runnable(object):
             if self.started():
                 raise RuntimeError('%s can only be run once.' % (self,))
 
-            self.__future = spawn(self.run)
+            self.__future = spawn(self.run, *self.__args, **self.__kwargs)
 
     def started(self):
         return self.__future is not None
