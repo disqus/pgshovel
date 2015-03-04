@@ -51,11 +51,12 @@ setup(
             'pgshovel-update-group = pgshovel.cli:update_group',
         ],
     },
+    include_package_data=True,
     packages=find_packages(PACKAGE_DIR),
     package_dir={
         '': PACKAGE_DIR,
     },
-    classifier=['Private :: Do Not Upload'],
+    classifiers=['Private :: Do Not Upload'],
     cmdclass = {
         'test': PyTest,
     },

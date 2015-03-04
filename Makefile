@@ -33,4 +33,7 @@ test-xunit: build
 	py.test --junitxml=$(XUNIT_FILE) --cov pgshovel --cov tests/ --cov-report=xml tests/
 	mv coverage.xml $(COVERAGE_FILE)
 
-.PHONY: all clean build develop install check test
+deb:
+	dpkg-buildpackage
+
+.PHONY: all clean build develop install check test deb

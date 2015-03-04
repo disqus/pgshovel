@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+
+%:
+	make build
+
+	# PGUSER needs to be set to the curent user because we get called with
+	# fakeroot which will cause tests to fail if user "root" doesn't exist
+	# on the database.
+	PGUSER=$(USER) \
+	dh $@ --with python-virtualenv

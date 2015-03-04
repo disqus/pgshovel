@@ -1,0 +1,5 @@
+include README.rst
+
+global-exclude *.py[co]
+
+recursive-include src/main/python *

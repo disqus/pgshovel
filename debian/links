@@ -1,0 +1,9 @@
+/usr/share/python/pgshovel/bin/pgshovel-consumer /usr/bin/pgshovel-consumer
+/usr/share/python/pgshovel/bin/pgshovel-create-group /usr/bin/pgshovel-create-group
+/usr/share/python/pgshovel/bin/pgshovel-drop-groups /usr/bin/pgshovel-drop-groups
+/usr/share/python/pgshovel/bin/pgshovel-initialize-cluster /usr/bin/pgshovel-initialize-cluster
+/usr/share/python/pgshovel/bin/pgshovel-inspect-group /usr/bin/pgshovel-inspect-group
+/usr/share/python/pgshovel/bin/pgshovel-list-groups /usr/bin/pgshovel-list-groups
+/usr/share/python/pgshovel/bin/pgshovel-move-groups /usr/bin/pgshovel-move-groups
+/usr/share/python/pgshovel/bin/pgshovel-shell /usr/bin/pgshovel-shell
+/usr/share/python/pgshovel/bin/pgshovel-update-group /usr/bin/pgshovel-update-group
