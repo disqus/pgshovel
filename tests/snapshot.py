@@ -38,6 +38,7 @@ def test_build_tree():
     user = Table(
         alias='user_0',
         name='user',
+        schema='public',
         primary_key='id',
         columns=['username', 'email'],
     )
@@ -45,6 +46,7 @@ def test_build_tree():
     profile = Table(
         alias='profile_0',
         name='profile',
+        schema='public',
         primary_key='id',
         columns=['display_name', 'settings'],
     )
@@ -60,9 +62,9 @@ def test_build_tree():
     assert tree.joins[0].right == user.joins[0].right
 
 
-author = Table('a', 'author', 'id', ('name',))
-book = Table('b', 'book', 'id', ('title', 'date',))
-chapter = Table('c', 'chapter', 'id', ('title',))
+author = Table('public', 'author', 'a', 'id', ('name',))
+book = Table('public', 'book', 'b', 'id', ('title', 'date',))
+chapter = Table('public', 'chapter', 'c', 'id', ('title',))
 
 author.joins.append(Join(Column(author, author.primary_key), Column(book, 'author_id')))
 book.joins.append(Join(Column(book, book.primary_key), Column(chapter, 'book_id')))
@@ -74,9 +76,9 @@ def test_build_statement():
             '"a"."id", "a"."name", ' \
             '"b"."id", "b"."title", "b"."date", ' \
             '"c"."id", "c"."title" ' \
-        'FROM "author" AS "a" ' \
-        'LEFT OUTER JOIN "book" AS "b" ON "a"."id" = "b"."author_id" ' \
-        'LEFT OUTER JOIN "chapter" AS "c" ON "b"."id" = "c"."book_id" ' \
+        'FROM "public"."author" AS "a" ' \
+        'LEFT OUTER JOIN "public"."book" AS "b" ON "a"."id" = "b"."author_id" ' \
+        'LEFT OUTER JOIN "public"."chapter" AS "c" ON "b"."id" = "c"."book_id" ' \
         'WHERE "a"."id" IN %s ' \
         'ORDER BY "a"."id" ASC, "b"."id" ASC, "c"."id" ASC'
 
@@ -85,15 +87,15 @@ def test_build_reverse_statements():
     assert build_reverse_statements(author) == {
         'book': [
             'SELECT DISTINCT "a"."id" AS "key" '
-            'FROM "book" AS "b" '
-            'INNER JOIN "author" AS "a" ON "b"."author_id" = "a"."id" '
+            'FROM "public"."book" AS "b" '
+            'INNER JOIN "public"."author" AS "a" ON "b"."author_id" = "a"."id" '
             'WHERE "b"."id" IN %s'
         ],
         'chapter': [
             'SELECT DISTINCT "a"."id" AS "key" '
-            'FROM "chapter" AS "c" '
-            'INNER JOIN "book" AS "b" ON "c"."book_id" = "b"."id" '
-            'INNER JOIN "author" AS "a" ON "b"."author_id" = "a"."id" '
+            'FROM "public"."chapter" AS "c" '
+            'INNER JOIN "public"."book" AS "b" ON "c"."book_id" = "b"."id" '
+            'INNER JOIN "public"."author" AS "a" ON "b"."author_id" = "a"."id" '
             'WHERE "c"."id" IN %s'
         ],
     }

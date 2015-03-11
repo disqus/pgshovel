@@ -20,28 +20,32 @@ class Join(namedtuple('Join', 'left right')):
         return super(Join, cls).__new__(cls, left, right)
 
     def forward(self):
-        return 'LEFT OUTER JOIN "{right.table.name}" AS "{right.table.alias}" ON {left} = {right}'.format(
+        return 'LEFT OUTER JOIN {right.table} AS "{right.table.alias}" ON {left} = {right}'.format(
             left=self.left,
             right=self.right,
         )
 
     def backward(self):
-        return 'INNER JOIN "{left.table.name}" AS "{left.table.alias}" ON {right} = {left}'.format(
+        return 'INNER JOIN {left.table} AS "{left.table.alias}" ON {right} = {left}'.format(
             left=self.left,
             right=self.right,
         )
 
 
-class Table(namedtuple('Table', 'alias name primary_key columns joins')):
-    def __new__(cls, alias, name, primary_key, columns, joins=None):
+class Table(namedtuple('Table', 'schema name alias primary_key columns joins')):
+    def __new__(cls, schema, name, alias, primary_key, columns, joins=None):
         return super(Table, cls).__new__(
             cls,
-            alias,
+            schema,
             name,
+            alias,
             primary_key,
             columns,
             joins if joins is not None else [],
         )
+
+    def __str__(self):
+        return '"%s"."%s"' % (self.schema, self.name,)
 
 
 def build_tree(configuration):
@@ -50,8 +54,9 @@ def build_tree(configuration):
 
     def traverse(configuration, parent=None):
         table = Table(
-            alias(configuration),
+            configuration.schema,
             configuration.name,
+            alias(configuration),
             configuration.primary_key,
             configuration.columns,
         )
@@ -97,7 +102,7 @@ def build_statement(tree):
 
     traverse(tree)
 
-    statement = 'SELECT {columns} FROM "{root.name}" AS "{root.alias}"'.format(
+    statement = 'SELECT {columns} FROM {root} AS "{root.alias}"'.format(
         root=tree,
         columns=', '.join(columns),
     )
@@ -113,7 +118,7 @@ def build_statement(tree):
 
 REVERSE_STATEMENT_TEMPLATE = \
     'SELECT DISTINCT "{root.alias}"."{root.primary_key}" AS "key" ' \
-    'FROM "{table.name}" AS "{table.alias}" ' \
+    'FROM {table} AS "{table.alias}" ' \
      '{joins} '\
     'WHERE "{table.alias}"."{table.primary_key}" IN %s'
 

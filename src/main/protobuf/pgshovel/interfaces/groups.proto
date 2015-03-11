@@ -13,6 +13,9 @@ message TableConfiguration {
     // listed here will be `LEFT JOIN`s with respect to this table.)
     repeated JoinConfiguration joins = 4;
 
+    // The schema where the table is located.
+    optional string schema = 5 [default="public"];
+
 }
 
 message JoinConfiguration {
