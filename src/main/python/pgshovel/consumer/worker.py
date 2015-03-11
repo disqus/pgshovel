@@ -1,3 +1,4 @@
+import collections
 import functools
 import logging
 import threading
@@ -31,6 +32,9 @@ def use_defer(method):
 def check_stop(runnable):
     runnable.stop()
     runnable.result()
+
+
+Event = collections.namedtuple('Event', 'id data')
 
 
 class Consumer(Runnable):
@@ -115,11 +119,10 @@ class Consumer(Runnable):
                         connection.commit()
                         continue  #  There is nothing to consume.
 
-                    statement = "SELECT ev_id FROM pgq.get_batch_events(%s)"
+                    statement = "SELECT ev_id, ev_data FROM pgq.get_batch_events(%s)"
                     cursor.execute(statement, (batch_id,))
 
-                    # TODO: Maybe perform any necessary transforms here?
-                    events = list(cursor.fetchall())
+                    events = map(lambda row: Event(*row), cursor.fetchall())
 
                     def finish(connection):
                         with connection.cursor() as cursor:
