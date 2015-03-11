@@ -35,6 +35,53 @@ def get_version(configuration):
     return hashlib.md5(configuration.SerializeToString()).hexdigest()
 
 
+INSTALL_CAPTURE_STATEMENT_TEMPLATE = """\
+CREATE OR REPLACE FUNCTION {application.schema}.{name}()
+RETURNS trigger
+LANGUAGE plpythonu AS
+$TRIGGER$
+{body}
+$TRIGGER$;"""
+
+# TODO: Add a utility function to upgrade all group triggers to the latest
+# version of the capture function -- maybe also include the pgshovel library
+# version as part of the version identifier eventually, to avoid having
+# previous versions (local "latest" versions) avoid overwriting newer versions
+# (global "latest" versions.)
+
+# TODO: Add a utility method to allow cleaning up unused versions of the
+# capture function.
+
+def create_capture_function(application, cursor):
+    """
+    Installs the capture function on the database for the provided cursor,
+    returning the function name that can be used as part of a ``CREATE
+    TRIGGER`` statement.
+
+    Capture functions are versioned based by including a hash of their contents
+    as part of the function name.
+
+    This can result in multiple versions of the capture function
+    (distinguishable by their differing names) existing, and possibly utilized,
+    on the database at the same time.
+
+    The implementation of the function that is returned is the implementation
+    that was defined in the pgshovel library used to create it, so it is
+    important that administrators keep their packages up to date (or at least
+    relatively consistent among those responsible for managing the cluster) to
+    avoid having a wide range of versions in use at the same time.
+    """
+    body = resource_string('sql/capture.py.tmpl')
+    name = 'capture_%s' % (hashlib.md5(body).hexdigest(),)
+    statement = INSTALL_CAPTURE_STATEMENT_TEMPLATE.format(
+        name=name,
+        application=application,
+        body=body,
+    )
+    cursor.execute(statement)
+    return name
+
+
 def configure_database(application, cursor):
     """
     Configures a database (the provided cursor) for use with pgshovel.
@@ -47,20 +94,12 @@ def configure_database(application, cursor):
     cursor.execute('CREATE EXTENSION IF NOT EXISTS pgq')
 
     # Install pypythonu if it doesn't already exist.
-    logger.info('Creating pypythonu langauge...')
+    logger.info('Creating plpythonu language...')
     cursor.execute('CREATE OR REPLACE LANGUAGE plpythonu')
 
     # Create the schema if it doesn't already exist.
     logger.info('Creating schema...')
     cursor.execute('CREATE SCHEMA IF NOT EXISTS %s' % (application.schema,))
-
-    # Install the capture function if it doesn't already exist.
-    logger.info('Creating capture function...')
-    cursor.execute(
-        Template(resource_string('sql/create-capture-function.sql')).substitute({
-            'schema': application.schema,
-        })
-    )
 
 
 def trigger_name(application, name):
@@ -91,12 +130,18 @@ def collect_tables(table):
 def configure_group(application, cursor, name, configuration):
     """
     Configures a capture group using the provided name and configuration data.
+
+    This function also ensures that the capture function for the group is the
+    the implementation of the function associated with this pgshovel version.
     """
     # Create the transaction queue if it doesn't already exist.
     logger.info('Creating transaction queue...')
     cursor.execute("SELECT pgq.create_queue(%s)", (application.get_queue_name(name),))
 
     tables = collect_tables(configuration.table)
+
+    logger.info('Installing capture function...')
+    capture = create_capture_function(application, cursor)
 
     trigger = trigger_name(application, name)
 
@@ -107,12 +152,13 @@ def configure_group(application, cursor, name, configuration):
             CREATE TRIGGER %(name)s
             AFTER INSERT OR UPDATE OF %(columns)s OR DELETE
             ON %(table)s
-            FOR EACH ROW EXECUTE PROCEDURE %(schema)s.capture(%%s, %%s)
+            FOR EACH ROW EXECUTE PROCEDURE %(schema)s.%(capture)s(%%s, %%s)
         """ % {
             'name': trigger,
             'columns': ', '.join(columns),
             'table': table,
             'schema': application.schema,
+            'capture': capture,
         }
 
         cursor.execute("DROP TRIGGER IF EXISTS %s ON %s" % (trigger, table))
