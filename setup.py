@@ -33,7 +33,6 @@ setup(
         'CloseableQueue',
         'futures',
         'kazoo',
-        'pgqueue',
         'protobuf',
         'psycopg2',
         'tabulate',

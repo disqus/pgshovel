@@ -19,7 +19,8 @@ Configure the pgshovel cluster.
 
     ./setup.sh postgresql:///$DATABASE
 
-Make sure the PGQ ticker is running.
+Make sure the PGQ ticker is running. (Requires ``pgqueue`` module, which can be
+installed via ``pip``: ``pip install pgqueue``.)
 
 ::
 
