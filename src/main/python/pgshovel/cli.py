@@ -73,7 +73,7 @@ def create_group(options, application, name):
 @command(description="Provides details about a capture group.")
 def inspect_group(options, application, name):
     with application:
-        data, stat = application.environment.zookeeper.get(administration.get_group_path(application, name))
+        data, stat = application.environment.zookeeper.get(application.get_group_path(name))
         configuration = BinaryCodec(GroupConfiguration).decode(data)
         sys.stdout.write(__get_codec(options, GroupConfiguration).encode(configuration))
         sys.stderr.write(administration.get_version(configuration) + '\n')
