@@ -22,6 +22,11 @@ consumer_group_identifier = 'consumer-group'
 consumer_identifier = 'consumer'
 
 
+class DummyHandler(object):
+    def __call__(self, group, configuration, events):
+        pass
+
+
 def test_assignment_manager_lifecycle(application, database):
     groups = setup_application(application, database)
 
@@ -71,7 +76,7 @@ def test_supervisor_lifecycle(application, database):
         application.get_consumer_group_membership_path(consumer_group_identifier)()
     )
 
-    supervisor = Supervisor(application, consumer_group_identifier, consumer_identifier)
+    supervisor = Supervisor(application, consumer_group_identifier, consumer_identifier, DummyHandler())
     supervisor.start()
 
     group = 'users'
@@ -130,7 +135,7 @@ def test_supervisor_consumer_failure(application, database):
     class ExplodingSupervisor(Supervisor):
         Coordinator = ExplodingCoordinator
 
-    supervisor = ExplodingSupervisor(application, consumer_group_identifier, consumer_identifier)
+    supervisor = ExplodingSupervisor(application, consumer_group_identifier, consumer_identifier, DummyHandler())
     supervisor.start()
 
     group = 'users'
@@ -150,6 +155,6 @@ def test_supervisor_collision(application, database):
     zookeeper.ensure_path(path())
     zookeeper.create(path(consumer_identifier))
     with pytest.raises(NodeExistsError):
-        supervisor = Supervisor(application, consumer_group_identifier, consumer_identifier)
+        supervisor = Supervisor(application, consumer_group_identifier, consumer_identifier, DummyHandler())
         supervisor.start()
         supervisor.result(5)

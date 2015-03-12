@@ -34,6 +34,11 @@ consumer_identifier = 'consumer'
 consumer_group_identifier = 'consumer-group'
 
 
+class DummyHandler(object):
+    def __call__(self, group, configuration, events):
+        pass
+
+
 class Explosion(Exception):
     pass
 
@@ -178,7 +183,7 @@ def test_consumer_lifecycle(application, database):
 
     # Check to make sure events can be consumed.
     with connection.cursor() as cursor:
-        events, finish = consumer.batches.get(timeout=1)
+        configuration, events, finish = consumer.batches.get(timeout=1)
         assert len(events) == n, 'consumer should recieve all records'
         finish(connection)
 
@@ -206,6 +211,7 @@ def test_coordinator_lifecycle(application, database):
         ManagedConnection(database.connection.dsn),
         consumer_group_identifier,
         consumer_identifier,
+        DummyHandler(),
     )
 
     # Start the coordinator.
@@ -259,6 +265,7 @@ def test_coordinator_consumer_failure_handling(application, database):
         ManagedConnection(database.connection.dsn),
         consumer_group_identifier,
         consumer_identifier,
+        DummyHandler(),
     )
 
     coordinator.start()

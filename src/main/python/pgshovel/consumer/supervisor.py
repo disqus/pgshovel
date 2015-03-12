@@ -161,11 +161,12 @@ class Supervisor(Runnable):
     """
     Coordinator = Coordinator
 
-    def __init__(self, application, consumer_group_identifier, consumer_identifier):
+    def __init__(self, application, consumer_group_identifier, consumer_identifier, handler):
         super(Supervisor, self,).__init__(name='supervisor', daemon=True)
         self.application = application
         self.consumer_group_identifier = consumer_group_identifier
         self.consumer_identifier = consumer_identifier
+        self.handler = handler
 
         self.__notifications = CloseableQueue()
 
@@ -192,6 +193,7 @@ class Supervisor(Runnable):
                 ManagedConnection(dsn),
                 self.consumer_group_identifier,
                 self.consumer_identifier,
+                self.handler,
             )
             logger.debug('Starting %r...', c)
             c.start()
@@ -298,7 +300,7 @@ class Supervisor(Runnable):
         self.join(timeout)
 
 
-def run(application, consumer_group_identifier, consumer_identifier):
+def run(application, consumer_group_identifier, consumer_identifier, handler):
     stop_requested = threading.Event()
 
     def __request_exit(signal, frame):
@@ -317,7 +319,12 @@ def run(application, consumer_group_identifier, consumer_identifier):
     with deferred() as defer:
         rebalancer = Rebalancer(application, consumer_group_identifier)
         assigner = AssignmentManager(application, consumer_identifier)
-        supervisor = Supervisor(application, consumer_group_identifier, consumer_identifier)
+        supervisor = Supervisor(
+            application,
+            consumer_group_identifier,
+            consumer_identifier,
+            handler,
+        )
 
         # Send assignments to the assignment manager.
         rebalancer.subscribe_async(assigner.update_assignments_async)

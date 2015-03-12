@@ -7,6 +7,7 @@ from pgshovel.interfaces.groups_pb2 import (
     DatabaseConfiguration,
     GroupConfiguration,
 )
+from pgshovel.utilities import load
 from pgshovel.utilities.commands import (
     FormatOption,
     Option,
@@ -109,13 +110,21 @@ def drop_groups(options, application, *names):
 
 @command(
     options=(
-        Option('--group', default='default', help='The consumer group identifier.'),
+        Option('-i', '--identifier', help='The consumer identifier.'),
+        Option('-g', '--group', default='default', help='The consumer group identifier.'),
+        Option(
+            '--handler',
+            default='pgshovel.consumer.handler:StreamHandler',
+            help='The handler implementation to be used.',
+        ),
     ),
 )
-def consumer(options, application, identifier=None):
+def consumer(options, application, *args):
     with application:
+        handler = load(options.handler).build(application, *args)
         return supervisor.run(
             application,
             options.group,
-            identifier if identifier is not None else uuid.uuid1().hex,
+            options.identifier if options.identifier is not None else uuid.uuid1().hex,
+            handler,
         )

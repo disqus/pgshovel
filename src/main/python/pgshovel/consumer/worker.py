@@ -132,7 +132,12 @@ class Consumer(Runnable):
                                 raise RuntimeError('Could not close batch!')
                         connection.commit()
 
-                    self.batches.put((events, finish))
+                    # This passes along the ``configuration`` value at the
+                    # point of retrieval. Since ``configuration`` attribute on
+                    # this worker is only replaced with a **new** configuration
+                    # value (never mutated in-place) this doesn't require a
+                    # lock or a deep copy to ensure it's validity later on.
+                    self.batches.put((self.configuration, events, finish))
                     connection.commit()
 
     def stop_async(self):
@@ -153,13 +158,14 @@ class Coordinator(Runnable):
     """
     Consumer = Consumer
 
-    def __init__(self, application, database, consumer_group_identifier, consumer_identifier):
+    def __init__(self, application, database, consumer_group_identifier, consumer_identifier, handler):
         super(Coordinator, self).__init__(name='coordinator:%s' % (database,), daemon=True)
 
         self.application = application
         self.database = database
         self.consumer_group_identifier = consumer_group_identifier
         self.consumer_identifier = consumer_identifier
+        self.handler = handler
 
         self.__queue = CloseableQueue()
         self.__consumers = {}  # <group name> -> Consumer
@@ -226,9 +232,10 @@ class Coordinator(Runnable):
                         raise RuntimeError('Found dead consumer: %r' % (consumer,))
 
                     try:
-                        events, finish = consumer.batches.get(False)
+                        configuration, events, finish = consumer.batches.get(False)
                         logger.debug('Fetched %s events from %s.', len(events), consumer)
-                        # TODO: Pass events to the handler.
+
+                        self.handler(consumer.group, configuration, events)
                         finish(connection)
                     except Empty:
                         pass  # This consumer doesn't have anything for us.
