@@ -43,12 +43,6 @@ $TRIGGER$
 {body}
 $TRIGGER$;"""
 
-# TODO: Add a utility function to upgrade all group triggers to the latest
-# version of the capture function -- maybe also include the pgshovel library
-# version as part of the version identifier eventually, to avoid having
-# previous versions (local "latest" versions) avoid overwriting newer versions
-# (global "latest" versions.)
-
 # TODO: Add a utility method to allow cleaning up unused versions of the
 # capture function.
 
@@ -127,17 +121,7 @@ def collect_tables(table):
     return tables
 
 
-def configure_group(application, cursor, name, configuration):
-    """
-    Configures a capture group using the provided name and configuration data.
-
-    This function also ensures that the capture function for the group is the
-    the implementation of the function associated with this pgshovel version.
-    """
-    # Create the transaction queue if it doesn't already exist.
-    logger.info('Creating transaction queue...')
-    cursor.execute("SELECT pgq.create_queue(%s)", (application.get_queue_name(name),))
-
+def setup_triggers(application, cursor, name, configuration):
     tables = collect_tables(configuration.table)
 
     logger.info('Installing capture function...')
@@ -169,6 +153,20 @@ def configure_group(application, cursor, name, configuration):
 
     for table, columns in tables.items():
         create_trigger(table, columns)
+
+
+def configure_group(application, cursor, name, configuration):
+    """
+    Configures a capture group using the provided name and configuration data.
+
+    This function also ensures that the capture function for the group is the
+    the implementation of the function associated with this pgshovel version.
+    """
+    # Create the transaction queue if it doesn't already exist.
+    logger.info('Creating transaction queue...')
+    cursor.execute("SELECT pgq.create_queue(%s)", (application.get_queue_name(name),))
+
+    setup_triggers(application, cursor, name, configuration)
 
 
 def drop_trigger(application, cursor, name, table):
@@ -310,6 +308,32 @@ def collect_groups_by_database(groups):
         sources[configuration.database.connection.dsn][name] = (configuration, stat)
     return sources
 
+
+# TODO: Add a version check to ensure previous versions (local "latest"
+# versions) avoid overwriting newer versions (global "latest" versions.)
+
+def upgrade_triggers(application, names=()):
+    zookeeper = application.environment.zookeeper
+
+    # If no specific names are provided, run the upgrade on all groups.
+    if not names:
+        names = zookeeper.get_children(application.get_group_path())
+
+    groups = dict(fetch_groups(application, names))
+
+    ztransaction = zookeeper.transaction()
+    transactions = []
+
+    for dsn, groups in collect_groups_by_database(groups).items():
+        connection = psycopg2.connect(dsn)
+        transactions.append(Transaction(connection, 'upgrade-triggers'))
+        with connection.cursor() as cursor:
+            for name, (configuration, stat) in groups.items():
+                setup_triggers(application, cursor, name, configuration)
+                ztransaction.check(application.get_group_path(name), stat.version)
+
+    with managed(transactions):
+        commit(ztransaction)
 
 
 @contextmanager

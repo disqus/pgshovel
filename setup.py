@@ -48,6 +48,7 @@ setup(
             'pgshovel-move-groups = pgshovel.cli:move_groups',
             'pgshovel-shell = pgshovel.cli:shell',
             'pgshovel-update-group = pgshovel.cli:update_group',
+            'pgshovel-upgrade-triggers = pgshovel.cli:upgrade_triggers',
         ],
     },
     include_package_data=True,

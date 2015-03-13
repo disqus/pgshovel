@@ -97,6 +97,12 @@ def move_groups(options, application, *names):
         return administration.move_groups(application, names, database, force=options.force)
 
 
+@command
+def upgrade_triggers(options, application, *names):
+    with application:
+        return administration.upgrade_triggers(application, names)
+
+
 @command(
     description="Drops capture group(s).",
     options=(

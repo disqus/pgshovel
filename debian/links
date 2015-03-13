@@ -7,3 +7,4 @@
 /usr/share/python/pgshovel/bin/pgshovel-move-groups /usr/bin/pgshovel-move-groups
 /usr/share/python/pgshovel/bin/pgshovel-shell /usr/bin/pgshovel-shell
 /usr/share/python/pgshovel/bin/pgshovel-update-group /usr/bin/pgshovel-update-group
+/usr/share/python/pgshovel/bin/pgshovel-upgrade-triggers /usr/bin/pgshovel-upgrade-triggers
