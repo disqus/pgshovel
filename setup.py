@@ -31,6 +31,7 @@ setup(
     name='pgshovel',
     install_requires=(
         'CloseableQueue',
+        'cached-property',
         'futures',
         'kazoo',
         'protobuf',

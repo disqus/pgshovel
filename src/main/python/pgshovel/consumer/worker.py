@@ -2,12 +2,14 @@ import collections
 import functools
 import logging
 import threading
+from cPickle import loads
 from Queue import (
     Empty,
     Queue,
 )
 from concurrent.futures import Future
 
+from cached_property import cached_property
 from kazoo.recipe.lock import Lock
 from CloseableQueue import CloseableQueue
 
@@ -34,7 +36,36 @@ def check_stop(runnable):
     runnable.result()
 
 
-Event = collections.namedtuple('Event', 'id data')
+States = collections.namedtuple('States', 'old new')
+Data = collections.namedtuple('Data', 'table operation states version transaction')
+Transaction = collections.namedtuple('Transaction', 'id time')
+
+
+def parse_version_0(payload):
+    table, operation, states, version, transaction = loads(payload)
+    return Data(
+        table,
+        operation,
+        States(*states),
+        version,
+        Transaction(*transaction),
+    )
+
+
+PAYLOAD_PARSERS = {
+    0: parse_version_0,
+}
+
+
+class Event(object):
+    def __init__(self, id, raw):
+        self.id = id
+        self.raw = raw
+
+    @cached_property
+    def data(self):
+        version, payload = self.raw.split(':')
+        return PAYLOAD_PARSERS[int(version)](payload)
 
 
 class Consumer(Runnable):

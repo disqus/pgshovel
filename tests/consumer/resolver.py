@@ -1,3 +1,4 @@
+import cPickle as pickle
 import json
 
 from pgshovel.consumer.resolver import create_simple_snapshot_builder
@@ -28,31 +29,38 @@ table {
 builder = create_simple_snapshot_builder(configuration)
 
 
+def payload(table, event, states, version, transaction):
+    return '0:%s' % pickle.dumps((
+        table,
+        event,
+        states,
+        version,
+        transaction,
+    ))
+
+
 def test_snapshot_insert():
-    event = Event(1, json.dumps({
-        "operation": "INSERT",
-        "transaction": {
-            "id": 1,
-            "time": 1,
-        },
-        "table": "user",
-        "state": {
-            "old": None,
-            "new": {
+    event = Event(1, payload(
+        'user',
+        'INSERT',
+        (
+            None,
+            {
                 "id": 1,
                 "username": "username",
                 "email": "user@example.org",
             },
-        },
-        "version": "version",
-    }))
+        ),
+        'version',
+        (1, 1),
+    ))
 
     snapshots = builder(None, (event,))
     assert snapshots == [
         Snapshot(
             key=1,
             state=State({  # note the lack of other keys not present in configuration
-                u"username": u"username",
+                "username": "username",
             }),
             transaction=Transaction(id=1, timestamp=1),
         )
@@ -60,32 +68,29 @@ def test_snapshot_insert():
 
 
 def test_snapshot_update_in_place():
-    event = Event(1, json.dumps({
-        "operation": "UPDATE",
-        "transaction": {
-            "id": 1,
-            "time": 1,
-        },
-        "table": "user",
-        "state": {
-            "old": {
+    event = Event(1, payload(
+        'user',
+        'UPDATE',
+        (
+            {
                 "id": 1,
                 "username": "username",
             },
-            "new": {
+            {
                 "id": 1,
                 "username": "new username",
             },
-        },
-        "version": "version",
-    }))
+        ),
+        'version',
+        (1, 1),
+    ))
 
     snapshots = builder(None, (event,))
     assert snapshots == [
         Snapshot(
             key=1,
             state=State({
-                u"username": u"new username",
+                "username": "new username",
             }),
             transaction=Transaction(id=1, timestamp=1),
         ),
@@ -93,25 +98,22 @@ def test_snapshot_update_in_place():
 
 
 def test_snapshot_update_moved():
-    event = Event(1, json.dumps({
-        "operation": "UPDATE",
-        "transaction": {
-            "id": 1,
-            "time": 1,
-        },
-        "table": "user",
-        "state": {
-            "old": {
+    event = Event(1, payload(
+        'user',
+        'UPDATE',
+        (
+            {
                 "id": 1,
                 "username": "username",
             },
-            "new": {
+            {
                 "id": 2,
-                "username": "username",
+                "username": "new username",
             },
-        },
-        "version": "version",
-    }))
+        ),
+        'version',
+        (1, 1),
+    ))
 
     snapshots = builder(None, (event,))
     assert sorted(snapshots) == [
@@ -123,7 +125,7 @@ def test_snapshot_update_moved():
         Snapshot(
             key=2,
             state=State({
-                u"username": u"username",
+                "username": "new username",
             }),
             transaction=Transaction(id=1, timestamp=1),
         ),
@@ -131,21 +133,19 @@ def test_snapshot_update_moved():
 
 
 def test_snapshot_delete():
-    event = Event(1, json.dumps({
-        "operation": "DELETE",
-        "transaction": {
-            "id": 1,
-            "time": 1,
-        },
-        "table": "user",
-        "state": {
-            "old": {
+    event = Event(1, payload(
+        'user',
+        'DELETE',
+        (
+            {
                 "id": 1,
                 "username": "username",
             },
-        },
-        "version": "version",
-    }))
+            None,
+        ),
+        'version',
+        (1, 1),
+    ))
 
     snapshots = builder(None, (event,))
     assert snapshots == [
@@ -158,40 +158,35 @@ def test_snapshot_delete():
 
 
 events = (
-    Event(1, json.dumps({
-        "operation": "INSERT",
-        "transaction": {
-            "id": 1,
-            "time": 1,
-        },
-        "table": "user",
-        "state": {
-            "new": {
+    Event(1, payload(
+        'user',
+        'INSERT',
+        (
+            None,
+            {
                 "id": 1,
                 "username": "username",
             },
-        },
-        "version": "version",
-    })),
-    Event(2, json.dumps({
-        "operation": "UPDATE",
-        "transaction": {
-            "id": 1,
-            "time": 1,
-        },
-        "table": "user",
-        "state": {
-            "old": {
+        ),
+        'version',
+        (1, 1),
+    )),
+    Event(2, payload(
+        'user',
+        'UPDATE',
+        (
+            {
                 "id": 1,
                 "username": "username",
             },
-            "new": {
+            {
                 "id": 1,
                 "username": "new username",
             },
-        },
-        "version": "version",
-    })),
+        ),
+        'version',
+        (1, 1),
+    )),
 )
 
 
@@ -201,11 +196,11 @@ def test_snapshot_no_compact():
     assert len(snapshots) == 2
 
     assert snapshots[0].state == State({
-        u"username": u"username",
+        "username": "username",
     })
 
     assert snapshots[1].state == State({
-        u"username": u"new username",
+        "username": "new username",
     })
 
 
@@ -215,5 +210,5 @@ def test_snapshot_compact():
     assert len(snapshots) == 1
 
     assert snapshots[0].state == State({
-        u"username": u"new username",
+        "username": "new username",
     })

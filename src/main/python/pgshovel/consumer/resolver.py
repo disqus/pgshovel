@@ -1,4 +1,4 @@
-import json
+from cPickle import loads
 
 from pgshovel.snapshot import (
     Snapshot,
@@ -22,36 +22,34 @@ def create_simple_snapshot_builder(configuration, compact=True):
     def reduce_state(state):
         return dict([item for item in state.items() if item[0] in columns])
 
-    def get_transaction(payload):
-        data = payload['transaction']
-        return Transaction(data['id'], data['time'])
+    def get_transaction(event):
+        return Transaction(*event.data.transaction)
 
-    def insert_snapshot(payload):
-        state = payload['state']['new']
+    def insert_snapshot(event):
+        state = event.data.states.new
         return (
             Snapshot(
                 key=extract_key(state),
                 state=State(reduce_state(state)),
-                transaction=get_transaction(payload),
+                transaction=get_transaction(event),
             ),
         )
 
-    def update_snapshot(payload):
-        new_state = payload['state']['new']
-        old_state = payload['state']['old']
-        transaction = get_transaction(payload)
+    def update_snapshot(event):
+        states = event.data.states
+        transaction = get_transaction(event)
         snapshots = (
             Snapshot(
-                key=extract_key(new_state),
-                state=State(reduce_state(new_state)),
+                key=extract_key(states.new),
+                state=State(reduce_state(states.new)),
                 transaction=transaction,
             ),
         )
 
-        if extract_key(new_state) != extract_key(old_state):
+        if extract_key(states.new) != extract_key(states.old):
             snapshots = snapshots + (
                 Snapshot(
-                    key=extract_key(old_state),
+                    key=extract_key(states.old),
                     state=None,
                     transaction=transaction,
                 ),
@@ -59,12 +57,13 @@ def create_simple_snapshot_builder(configuration, compact=True):
 
         return snapshots
 
-    def delete_snapshot(payload):
+    def delete_snapshot(event):
+        state = event.data.states.old
         return (
             Snapshot(
-                key=extract_key(payload['state']['old']),
+                key=extract_key(state),
                 state=None,
-                transaction=get_transaction(payload),
+                transaction=get_transaction(event),
             ),
         )
 
@@ -77,17 +76,15 @@ def create_simple_snapshot_builder(configuration, compact=True):
     def resolve(cursor, events):
         snapshots = []
         for event in events:
-            payload = json.loads(event.data)
-            handler = handlers[payload['operation']]
-            snapshots.extend(handler(payload))
+            handler = handlers[event.data.operation]
+            snapshots.extend(handler(event))
         return snapshots
 
     def resolve_compact(cursor, events):
         snapshots = {}
         for event in events:
-            payload = json.loads(event.data)
-            handler = handlers[payload['operation']]
-            for snapshot in handler(payload):
+            handler = handlers[event.data.operation]
+            for snapshot in handler(event):
                 snapshots[snapshot.key] = snapshot
         return snapshots.values()
 
