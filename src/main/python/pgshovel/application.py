@@ -2,20 +2,13 @@ import functools
 import posixpath
 
 from kazoo.client import KazooClient
+from cached_property import cached_property
 
 
 
 class Environment(object):
-    def __init__(self, configuration):
-        self.configuration = configuration
-
-    @property
-    def zookeeper(self):
-        try:
-            return self.__zookeeper
-        except AttributeError:
-            zookeeper = self.__zookeeper = KazooClient(self.configuration.zookeeper.hosts)
-        return zookeeper
+    def __init__(self, zookeeper_hosts):
+        self.zookeeper = KazooClient(zookeeper_hosts)
 
     def __enter__(self):
         self.start()
@@ -31,9 +24,9 @@ class Environment(object):
 
 
 class Application(object):
-    def __init__(self, environment, configuration):
+    def __init__(self, name, environment):
+        self.name = name
         self.environment = environment
-        self.configuration = configuration
 
     def __enter__(self):
         self.start()
@@ -42,21 +35,24 @@ class Application(object):
         self.stop()
 
     def __str__(self):
-        return self.configuration.name
+        return self.name
 
     @property
     def path(self):
-        return '/%s' % (self.configuration.name,)
+        return '/%s' % (self.name,)
 
     @property
     def schema(self):
-        return '_pgshovel_%s' % (self.configuration.name,)
+        return 'pgshovel_%s' % (self.name,)
 
     def start(self):
         self.environment.start()
 
     def stop(self):
         self.environment.stop()
+
+    def get_trigger_name(self, group):
+        return 'pgshovel_%s_%s_capture' % (self.name, group)
 
     @property
     def get_group_path(self):
@@ -73,4 +69,4 @@ class Application(object):
         return functools.partial(self.get_consumer_path ,consumer_group, 'ownership')
 
     def get_queue_name(self, group):
-        return 'pgshovel:%s:%s' % (self.configuration.name, group)
+        return 'pgshovel:%s:%s' % (self.name, group)

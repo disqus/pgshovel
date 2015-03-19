@@ -8,6 +8,7 @@ from string import Template
 
 import psycopg2
 
+from pgshovel.interfaces.application_pb2 import ApplicationConfiguration
 from pgshovel.interfaces.groups_pb2 import GroupConfiguration
 from pgshovel.utilities.postgresql import (
     Transaction,
@@ -96,10 +97,6 @@ def configure_database(application, cursor):
     cursor.execute('CREATE SCHEMA IF NOT EXISTS %s' % (application.schema,))
 
 
-def trigger_name(application, name):
-    return '_pgshovel_%s_%s_capture' % (application.configuration.name, name)
-
-
 def collect_tables(table):
     """
     Returns a dictionary, keyed by table name, containing all columns that
@@ -127,7 +124,7 @@ def setup_triggers(application, cursor, name, configuration):
     logger.info('Installing capture function...')
     capture = create_capture_function(application, cursor)
 
-    trigger = trigger_name(application, name)
+    trigger = application.get_trigger_name(name)
 
     def create_trigger(table, columns):
         logger.info('Installing capture trigger on %s...', table)
@@ -174,7 +171,7 @@ def drop_trigger(application, cursor, name, table):
     Drops a capture trigger on the provided table for the specified group.
     """
     logger.info('Dropping capture trigger on %s...', table)
-    cursor.execute('DROP TRIGGER %s ON %s' % (trigger_name(application, name), table))
+    cursor.execute('DROP TRIGGER %s ON %s' % (application.get_trigger_name(name), table))
 
 
 def unconfigure_group(application, cursor, name, configuration):
@@ -201,8 +198,9 @@ def initialize_cluster(application):
     """
     logger.info('Creating a new cluster for %s...', application)
 
+    configuration = ApplicationConfiguration()
     ztransaction = application.environment.zookeeper.transaction()
-    ztransaction.create(application.path)
+    ztransaction.create(application.path, BinaryCodec(ApplicationConfiguration).encode(configuration))
     ztransaction.create(application.get_group_path())
     commit(ztransaction)
 

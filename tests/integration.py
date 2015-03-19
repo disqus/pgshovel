@@ -22,10 +22,6 @@ from pgshovel.application import (
     Application,
     Environment,
 )
-from pgshovel.interfaces.application_pb2 import (
-    ApplicationConfiguration,
-    EnvironmentConfiguration,
-)
 from pgshovel.interfaces.groups_pb2 import (
     DatabaseConfiguration,
     GroupConfiguration,
@@ -72,22 +68,20 @@ def TemporaryZooKeeper():
     zookeeper.create(path)
     zookeeper.stop()
 
-    yield EnvironmentConfiguration.ZooKeeperConfiguration(hosts='/'.join((host, path)))
+    yield '/'.join((host, path))
 
 
 @contextmanager
 def TemporaryEnvironment():
-    with TemporaryZooKeeper() as zookeeper:
-        configuration = EnvironmentConfiguration(zookeeper=zookeeper)
-        yield Environment(configuration)
+    with TemporaryZooKeeper() as zookeeper_hosts:
+        yield Environment(zookeeper_hosts)
 
 
 @contextmanager
 def TemporaryApplication():
     name = 'test_%s' % (uuid.uuid1().hex,)
     with TemporaryEnvironment() as environment:
-        configuration = ApplicationConfiguration(name=name)
-        yield Application(environment, configuration)
+        yield Application(name, environment)
 
 
 RESOURCE_PATH = os.path.join(os.path.dirname(__file__), 'resources')

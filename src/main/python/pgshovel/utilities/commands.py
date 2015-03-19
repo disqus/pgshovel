@@ -15,10 +15,6 @@ from pgshovel.application import (
     Application,
     Environment,
 )
-from pgshovel.interfaces.application_pb2 import (
-    ApplicationConfiguration,
-    EnvironmentConfiguration,
-)
 from pgshovel.utilities.templates import resource_filename
 
 
@@ -81,19 +77,10 @@ def command(function=None, *args, **kwargs):
 
             logging.config.fileConfig(logging_configuration)
 
-            environment = Environment(
-                EnvironmentConfiguration(
-                    zookeeper=EnvironmentConfiguration.ZooKeeperConfiguration(
-                        hosts=options.zookeeper_hosts,
-                    ),
-                ),
-            )
-
+            environment = Environment(options.zookeeper_hosts)
             application = Application(
+                options.application,
                 environment,
-                ApplicationConfiguration(
-                    name=options.application,
-                ),
             )
 
             try:
