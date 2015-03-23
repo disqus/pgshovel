@@ -1,7 +1,9 @@
 import logging
 import threading
-from contextlib import contextmanager
+import time
 from Queue import Empty
+from cPickle import dumps
+from contextlib import contextmanager
 
 import psycopg2
 import pytest
@@ -14,6 +16,7 @@ from pgshovel.administration import (
 from pgshovel.consumer.worker import (
     Consumer,
     Coordinator,
+    Event,
 )
 from pgshovel.interfaces.groups_pb2 import (
     GroupConfiguration,
@@ -41,6 +44,20 @@ class DummyHandler(object):
 
 class Explosion(Exception):
     pass
+
+
+def test_event_deserialization():
+    data = (
+        'table',
+        'operation',
+        ('new:data', 'old:data'),
+        'version',
+        (1, time.time() * 100000)
+    )
+    payload = '0:%s' % dumps(data)
+    assert payload.count(':') > 1  # ensure test invariant
+    event = Event(1, payload)
+    assert event.data == data
 
 
 @pytest.yield_fixture

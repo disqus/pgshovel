@@ -64,7 +64,7 @@ class Event(object):
 
     @cached_property
     def data(self):
-        version, payload = self.raw.split(':')
+        version, payload = self.raw.split(':', 1)
         return PAYLOAD_PARSERS[int(version)](payload)
 
 
