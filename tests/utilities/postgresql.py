@@ -1,8 +1,42 @@
+from datetime import (
+    datetime,
+    timedelta,
+    tzinfo,
+)
+
 import psycopg2
 import pytest
 
-from pgshovel.utilities.postgresql import ManagedConnection
+from pgshovel.utilities.postgresql import (
+    ManagedConnection,
+    pg_date_format,
+)
 from tests.integration import TemporaryDatabase
+
+
+class FixedOffset(tzinfo):
+    def __init__(self, offset, name):
+        self.__offset = timedelta(minutes=offset)
+        self.__name = name
+
+    def utcoffset(self, dt):
+        return self.__offset
+
+    def tzname(self, dt):
+        return self.__name
+
+    def dst(self, dt):
+        return timedelta(minutes=0)
+
+
+def test_pg_date_format():
+    pg_date_format(datetime(2015, 3, 23, 16, 15, 1, 898802)) == '2015-03-23 16:15:01.898802'
+    pg_date_format(datetime(2015, 3, 23, 16, 15, 1, 898802, FixedOffset(0, 'UTC'))) == '2015-03-23 16:15:01.898802+00'
+    pg_date_format(datetime(2015, 3, 23, 16, 15, 1, 890000, FixedOffset(0, 'UTC'))) == '2015-03-23 16:15:01.89+00'
+    pg_date_format(datetime(2015, 3, 23, 16, 15, 1, 898802, FixedOffset(-8 * 60, 'PST'))) == '2015-03-23 16:15:01.898802-08'
+
+    # Australia is weird: http://en.wikipedia.org/wiki/UTC%2B09:45
+    pg_date_format(datetime(2015, 3, 23, 16, 15, 1, 0, FixedOffset(9 * 60 + 45, 'UTC+09:45'))) == '2015-03-23 16:15:01+09:45'
 
 
 @pytest.yield_fixture

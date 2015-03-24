@@ -3,8 +3,11 @@ import itertools
 import operator
 from collections import (
     defaultdict,
-    namedtuple
+    namedtuple,
 )
+from datetime import datetime
+
+from pgshovel.utilities.postgresql import pg_date_format
 
 
 class Column(namedtuple('Column', 'table name')):
@@ -157,6 +160,16 @@ class State(namedtuple("State", "data related")):
         )
 
 
+def normalize(data):
+    """
+    Performs type conversions necessary to make data equivalent with trigger output.
+    """
+    for key, value in data.items():
+        if isinstance(value, datetime):
+            data[key] = pg_date_format(value)
+    return data
+
+
 def build_result_expander(root):
     """
     Returns a function that can be used to transform the result of a query made
@@ -177,7 +190,7 @@ def build_result_expander(root):
             # it should be a column value, it should be part of the
             # configuration's columns attribute) and associate the requested
             # column values to the result row's values at the same indices.
-            state = State(dict(zip(columns, group[0][1:])))
+            state = State(normalize(dict(zip(columns, group[0][1:]))))
 
             if len(table.joins) > 1:
                 raise ValueError('Only one join per table is currently supported.')

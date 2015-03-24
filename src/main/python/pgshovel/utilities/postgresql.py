@@ -3,6 +3,7 @@ import sys
 import threading
 import uuid
 from contextlib import contextmanager
+from datetime import timedelta
 
 import psycopg2
 
@@ -10,6 +11,44 @@ from pgshovel.utilities.exceptions import chained
 
 
 logger = logging.getLogger(__name__)
+
+
+def pg_date_format(value):
+    """
+    Converts a datetime to the ISO 8601-ish format used by PostgreSQL.
+
+    The exact implementation of the format is undocumented, but it generally
+    optimizes by dropping off implied characters (such as right padding on
+    microsecond values, or the minute part of timezone specifications that
+    contain only hours.)
+    """
+    bits = []
+
+    bits.append(value.strftime('%Y-%m-%d %H:%M:%S'))
+
+    if value.microsecond:
+        bits.append(('.%06d' % value.microsecond).rstrip('0'))
+
+    # The basic logic here was extracted from
+    # https://hg.python.org/cpython/file/24d4152b0040/Lib/datetime.py#l1163 and
+    # slightly modified for Python 2.X compatibility.
+    offset = value.utcoffset()
+    if offset:
+        if offset.days < 0:
+            sign = "-"
+            offset = -offset
+        else:
+            sign = "+"
+
+        hours, minutes = divmod(offset.total_seconds(), timedelta(hours=1).total_seconds())
+        assert not minutes % 60, "whole minute"
+        minutes //= 60
+        assert 0 <= hours < 24
+        bits.append('%s%02d' % (sign, hours))
+        if minutes:
+            bits.append(':%02d' % (minutes,))
+
+    return ''.join(bits)
 
 
 class UnrecoverableTransactionFailure(Exception):
