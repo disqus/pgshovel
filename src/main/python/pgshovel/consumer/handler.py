@@ -17,7 +17,7 @@ class Handler(object):
     where data integrity is less important (such as ephemeral publish/subscribe
     streams) and timeliness of delivery is more important.
     """
-    def __call__(self, group, configuration, events):
+    def __call__(self, group, configuration, cursor, events):
         raise NotImplementedError
 
     @classmethod
@@ -35,7 +35,7 @@ class StreamHandler(Handler):
 
         self.__lock = threading.Lock()
 
-    def __call__(self, group, configuration, events):
+    def __call__(self, group, configuration, cursor, events):
         with self.__lock:
             write = self.stream.write
             template = self.template

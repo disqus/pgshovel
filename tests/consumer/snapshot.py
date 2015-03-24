@@ -1,7 +1,7 @@
 import cPickle as pickle
 import json
 
-from pgshovel.consumer.resolver import create_simple_snapshot_builder
+from pgshovel.consumer.snapshot import create_simple_snapshot_builder
 from pgshovel.consumer.worker import Event
 from pgshovel.interfaces.groups_pb2 import GroupConfiguration
 from pgshovel.snapshot import (
@@ -55,7 +55,7 @@ def test_snapshot_insert():
         (1, 1),
     ))
 
-    snapshots = builder(None, (event,))
+    snapshots = list(builder(None, (event,)))
     assert snapshots == [
         Snapshot(
             key=1,
@@ -85,7 +85,7 @@ def test_snapshot_update_in_place():
         (1, 1),
     ))
 
-    snapshots = builder(None, (event,))
+    snapshots = list(builder(None, (event,)))
     assert snapshots == [
         Snapshot(
             key=1,
@@ -115,7 +115,7 @@ def test_snapshot_update_moved():
         (1, 1),
     ))
 
-    snapshots = builder(None, (event,))
+    snapshots = list(builder(None, (event,)))
     assert sorted(snapshots) == [
         Snapshot(
             key=1,
@@ -147,7 +147,7 @@ def test_snapshot_delete():
         (1, 1),
     ))
 
-    snapshots = builder(None, (event,))
+    snapshots = list(builder(None, (event,)))
     assert snapshots == [
         Snapshot(
             key=1,
@@ -192,7 +192,7 @@ events = (
 
 def test_snapshot_no_compact():
     builder = create_simple_snapshot_builder(configuration, compact=False)
-    snapshots = builder(None, events)
+    snapshots = list(builder(None, events))
     assert len(snapshots) == 2
 
     assert snapshots[0].state == State({
@@ -206,7 +206,7 @@ def test_snapshot_no_compact():
 
 def test_snapshot_compact():
     builder = create_simple_snapshot_builder(configuration, compact=True)
-    snapshots = builder(None, events)
+    snapshots = list(builder(None, events))
     assert len(snapshots) == 1
 
     assert snapshots[0].state == State({

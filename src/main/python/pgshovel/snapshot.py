@@ -225,6 +225,9 @@ def build_snapshotter(tree):
     expand = build_result_expander(tree)
 
     def snapshot(cursor, keys):
+        if not keys:
+            return
+
         # Fetch the transaction metadata.
         cursor.execute("SELECT txid_current(), extract(epoch from NOW())")
         (result,) = cursor.fetchall()

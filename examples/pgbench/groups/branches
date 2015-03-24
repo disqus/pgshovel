@@ -2,3 +2,12 @@ name: "pgbench_branches"
 primary_key: "bid"
 columns: "bbalance"
 columns: "filler"
+joins {
+    table: {
+        name: "pgbench_tellers"
+        primary_key: "tid"
+        columns: "tbalance"
+        columns: "filler"
+    }
+    foreign_key: "bid"
+}

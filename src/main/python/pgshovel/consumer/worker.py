@@ -266,7 +266,9 @@ class Coordinator(Runnable):
                         configuration, events, finish = consumer.batches.get(False)
                         logger.debug('Fetched %s events from %s.', len(events), consumer)
 
-                        self.handler(consumer.group, configuration, events)
+                        with connection.cursor() as cursor:
+                            self.handler(consumer.group, configuration, cursor, events)
+
                         finish(connection)
                     except Empty:
                         pass  # This consumer doesn't have anything for us.
