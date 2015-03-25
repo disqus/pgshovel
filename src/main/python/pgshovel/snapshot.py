@@ -229,7 +229,7 @@ def build_snapshotter(tree):
             return
 
         # Fetch the transaction metadata.
-        cursor.execute("SELECT txid_current(), extract(epoch from NOW())")
+        cursor.execute("SELECT txid_current(), extract(epoch from NOW()) * 1e6::bigint")
         (result,) = cursor.fetchall()
         transaction = Transaction(*result)
 
