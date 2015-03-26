@@ -2,7 +2,13 @@ import code
 import sys
 import uuid
 
+import psycopg2
+
 from pgshovel import administration
+from pgshovel.consumer.snapshot import (
+    build_snapshotter,
+    build_tree,
+)
 from pgshovel.interfaces.groups_pb2 import (
     DatabaseConfiguration,
     GroupConfiguration,
@@ -19,7 +25,6 @@ from pgshovel.utilities.protobuf import (
     TextCodec,
 )
 from pgshovel.consumer import supervisor
-
 
 def __get_codec(options, cls):
     # TODO: allow switching between text and binary codecs as an option
@@ -134,3 +139,16 @@ def consumer(options, application, *args):
             options.identifier if options.identifier is not None else uuid.uuid1().hex,
             handler,
         )
+
+
+@command
+def snapshot(options, application, group, *keys):
+    with application:
+        raw, _ = application.environment.zookeeper.get(application.get_group_path(group))
+        configuration = BinaryCodec(GroupConfiguration).decode(raw)
+        get_snapshot = build_snapshotter(build_tree(configuration.table))
+
+        dsn = configuration.database.connection.dsn
+        with psycopg2.connect(dsn) as connection, connection.cursor() as cursor:
+            for result in get_snapshot(cursor, map(int, keys)):
+                print result
