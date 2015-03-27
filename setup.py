@@ -66,4 +66,7 @@ setup(
         'pytest',
         'pytest-cov',
     ),
+    extras_require={
+        'lmdb': ('lmdb',),
+    },
 )
