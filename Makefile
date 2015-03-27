@@ -28,7 +28,7 @@ check:
 test:
 	python setup.py test
 
-test-xunit: build
+test-xunit: build develop
 	rm -f coverage.xml
 	py.test --junitxml=$(XUNIT_FILE) --cov pgshovel --cov tests/ --cov-report=xml tests/
 	mv coverage.xml $(COVERAGE_FILE)
