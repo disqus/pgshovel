@@ -11,17 +11,11 @@ from pgshovel.utilities.postgresql import pg_date_format
 
 
 class Column(namedtuple('Column', 'table name')):
-    def __new__(cls, table, name):
-        return super(Column, cls).__new__(cls, table, name)
-
     def __str__(self):
         return '"%s"."%s"' % (self.table.alias, self.name)
 
 
-class Join(namedtuple('Join', 'left right')):
-    def __new__(cls, left, right):
-        return super(Join, cls).__new__(cls, left, right)
-
+class Join(namedtuple('Join', 'label left right')):
     def forward(self):
         return 'LEFT OUTER JOIN {right.table} AS "{right.table.alias}" ON {left} = {right}'.format(
             left=self.left,
@@ -72,6 +66,7 @@ def build_tree(configuration):
 
             table.joins.append(
                 Join(
+                    join.label,
                     Column(table, configuration.primary_key),
                     Column(jtable, join.foreign_key),
                 )
@@ -204,7 +199,7 @@ def build_result_expander(root):
                 offset = 1 + len(columns)
                 limited = map(lambda row: row[offset:], group)
 
-                children = state.related[".".join((join.right.table.name, join.right.name))] = []
+                children = state.related[join.label] = []
                 for child_key, child_state in build(join.right.table, limited):
                     # If the key is None, this is a null result (introduced by
                     # using a LEFT OUTER JOIN) and should be skipped.

@@ -23,6 +23,7 @@ def test_build_tree():
         columns=['username', 'email'],
         joins=[
             JoinConfiguration(
+                label='profiles',
                 table=TableConfiguration(
                     name='profile',
                     primary_key='id',
@@ -51,7 +52,7 @@ def test_build_tree():
         columns=['display_name', 'settings'],
     )
 
-    user.joins.append(Join(Column(user, 'id'), Column(profile, 'user_id')))
+    user.joins.append(Join('profiles', Column(user, 'id'), Column(profile, 'user_id')))
 
     # XXX: Can't actually test simple equality because the presence of the
     # parent table in the Join causes a cycle and infinite recursion, so we
@@ -66,8 +67,8 @@ author = Table('public', 'author', 'a', 'id', ('name',))
 book = Table('public', 'book', 'b', 'id', ('title', 'date',))
 chapter = Table('public', 'chapter', 'c', 'id', ('title',))
 
-author.joins.append(Join(Column(author, author.primary_key), Column(book, 'author_id')))
-book.joins.append(Join(Column(book, book.primary_key), Column(chapter, 'book_id')))
+author.joins.append(Join('books', Column(author, author.primary_key), Column(book, 'author_id')))
+book.joins.append(Join('chapters', Column(book, book.primary_key), Column(chapter, 'book_id')))
 
 
 def test_build_statement():
@@ -123,16 +124,16 @@ def test_result_expander():
     key, state = states[0]
     assert key == 1
     assert state == State({'name': 'ernest hemingway'}, {
-        'book.author_id': [
+        'books': [
             State({'date': 1926, 'title': 'the sun also rises'}, {
-                'chapter.book_id': [
+                'chapters': [
                     State({'title': 'one'}),
                     State({'title': 'two'}),
                     State({'title': 'three'}),
                 ],
             }),
             State({'date': 1952, 'title': 'the old man and the sea'}, {
-                'chapter.book_id': [],
+                'chapters': [],
             }),
         ],
     })
@@ -140,9 +141,9 @@ def test_result_expander():
     key, state = states[1]
     assert key == 2
     assert state == State({'name': 'joseph heller'}, {
-        'book.author_id': [
+        'books': [
             State({'date': 1961, 'title': 'catch-22'}, {
-                'chapter.book_id': [],
+                'chapters': [],
             }),
         ],
     })

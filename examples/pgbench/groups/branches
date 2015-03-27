@@ -3,6 +3,7 @@ primary_key: "bid"
 columns: "bbalance"
 columns: "filler"
 joins {
+    label: "tellers"
     table: {
         name: "pgbench_tellers"
         primary_key: "tid"

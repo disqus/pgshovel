@@ -2,6 +2,7 @@ name: "users"
 primary_key: "id"
 columns: "username"
 joins {
+    label: "profiles"
     table {
         name: "profiles"
         primary_key: "id"
