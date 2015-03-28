@@ -32,8 +32,8 @@ def pg_date_format(value):
     # The basic logic here was extracted from
     # https://hg.python.org/cpython/file/24d4152b0040/Lib/datetime.py#l1163 and
     # slightly modified for Python 2.X compatibility.
-    offset = value.utcoffset()
-    if offset:
+    if value.tzinfo is not None:
+        offset = value.utcoffset()
         if offset.days < 0:
             sign = "-"
             offset = -offset

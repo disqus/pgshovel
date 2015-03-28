@@ -29,7 +29,7 @@ class PyTest(test):
 
 setup(
     name='pgshovel',
-    version='0.1.0',
+    version='0.1.1',
     install_requires=(
         'CloseableQueue',
         'cached-property',
