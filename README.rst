@@ -12,7 +12,7 @@ Installation
   cluster modification, this does not need to be a very large value. There will
   be rarely more than one prepared transaction running on a single database at
   a time, with the exception of concurrent cluster modifications.)
-* The ``plpythonu`` langauge must be available, and have the ``json`` module.
+* The ``plpythonu`` language must be available.
 
 Command Overview
 ----------------
