@@ -13,8 +13,12 @@ from pgshovel.consumer.snapshot import (
     build_tree,
 )
 from pgshovel.interfaces.groups_pb2 import GroupConfiguration
+from pgshovel.snapshot import State
 from pgshovel.utilities import import_extras
-from pgshovel.utilities.commands import command
+from pgshovel.utilities.commands import (
+    Option,
+    command,
+)
 from pgshovel.utilities.protobuf import BinaryCodec
 
 with import_extras('lmdb'):
@@ -76,6 +80,9 @@ def chunks(cursor, size=100):
     description=\
         "Validate that all records from the origin database have been written "
         "to the LMDB replica with the correct data.",
+    options=(
+        Option('-v', '--verbose', action='store_true', help='print current and stored values of incorrect results'),
+    ),
 )
 def validate(options, application, path, *groups):
     environment = lmdb.open(
@@ -118,6 +125,9 @@ def validate(options, application, path, *groups):
                             correct = current.state == getattr(stored, 'state', None)
                             results[correct].add(key)
                             print >> sys.stderr, key, 'correct' if correct else 'incorrect'
+                            if not correct and options.verbose:
+                                print >> sys.stderr, 'current:', current
+                                print >> sys.stderr, 'stored:', stored
 
         print len(results[True]), 'correct'
         print len(results[False]), 'incorrect'
