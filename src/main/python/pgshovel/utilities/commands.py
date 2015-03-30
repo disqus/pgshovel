@@ -3,6 +3,7 @@ import functools
 import inspect
 import json
 import optparse
+import pkg_resources
 import sys
 import textwrap
 from datetime import timedelta
@@ -45,6 +46,12 @@ def command(function=None, *args, **kwargs):
         )
 
         parser.add_option(
+            '--version',
+            action='store_true',
+            help='print version and exit',
+        )
+
+        parser.add_option(
             '-a', '--application',
             default='default', metavar='NAME',
             help='application identifier (%default)',
@@ -68,6 +75,10 @@ def command(function=None, *args, **kwargs):
         @functools.wraps(function)
         def wrapper():
             options, arguments = parser.parse_args()
+
+            if options.version:
+                print pkg_resources.get_distribution("pgshovel").version
+                sys.exit(0)
 
             if options.logging_configuration:
                 logging_configuration = options.logging_configuration
