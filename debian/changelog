@@ -1,5 +1,5 @@
-pgshovel (0.0.0-disqus0) precise; urgency=low
+pgshovel (0.1.1) precise; urgency=low
 
   * Initial release.
 
- -- Disqus Operations <ops@disqus.com>  Tue, 03 Mar 2015 00:27:25 +0000
+ -- Disqus Operations <ops@disqus.com>  Fri, 27 Mar 2015 22:31:57 +0000
