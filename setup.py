@@ -68,6 +68,11 @@ setup(
         'pytest-cov',
     ),
     extras_require={
-        'lmdb': ('lmdb',),
+        'lmdb': (
+            'lmdb',
+        ),
+        'sentry': (
+            'raven',
+        ),
     },
 )
