@@ -13,6 +13,10 @@ from pgshovel.utilities.exceptions import chained
 logger = logging.getLogger(__name__)
 
 
+def quote(value):
+    return '"%s"' % (value.replace('"', '""'),)
+
+
 def pg_date_format(value):
     """
     Converts a datetime to the ISO 8601-ish format used by PostgreSQL.

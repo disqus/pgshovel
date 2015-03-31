@@ -1,11 +1,9 @@
 import collections
-import functools
 import hashlib
 import logging
 import operator
 import pkg_resources
 from contextlib import contextmanager
-from string import Template
 
 import psycopg2
 
@@ -14,6 +12,7 @@ from pgshovel.interfaces.groups_pb2 import GroupConfiguration
 from pgshovel.utilities.postgresql import (
     Transaction,
     managed,
+    quote,
 )
 from pgshovel.utilities.protobuf import BinaryCodec
 from pgshovel.utilities.templates import resource_string
@@ -38,7 +37,7 @@ def get_version(configuration):
 
 
 INSTALL_CAPTURE_STATEMENT_TEMPLATE = """\
-CREATE OR REPLACE FUNCTION {application.schema}.{name}()
+CREATE OR REPLACE FUNCTION {schema}.{name}()
 RETURNS trigger
 LANGUAGE plpythonu AS
 $TRIGGER$
@@ -71,8 +70,8 @@ def create_capture_function(application, cursor):
     body = resource_string('sql/capture.py.tmpl')
     name = 'capture_%s' % (hashlib.md5(body).hexdigest(),)
     statement = INSTALL_CAPTURE_STATEMENT_TEMPLATE.format(
-        name=name,
-        application=application,
+        name=quote(name),
+        schema=quote(application.schema),
         body=body,
         version=pkg_resources.get_distribution("pgshovel").version,
     )
@@ -97,7 +96,9 @@ def configure_database(application, cursor):
 
     # Create the schema if it doesn't already exist.
     logger.info('Creating schema...')
-    cursor.execute('CREATE SCHEMA IF NOT EXISTS %s' % (application.schema,))
+    cursor.execute('CREATE SCHEMA IF NOT EXISTS {schema}'.format(
+        schema=quote(application.schema),
+    ))
 
 
 def collect_tables(table):
@@ -133,19 +134,23 @@ def setup_triggers(application, cursor, name, configuration):
         logger.info('Installing capture trigger on %s...', table)
 
         statement = """
-            CREATE TRIGGER %(name)s
-            AFTER INSERT OR UPDATE OF %(columns)s OR DELETE
-            ON %(table)s
-            FOR EACH ROW EXECUTE PROCEDURE %(schema)s.%(capture)s(%%s, %%s)
-        """ % {
-            'name': trigger,
-            'columns': ', '.join(columns),
-            'table': table,
-            'schema': application.schema,
-            'capture': capture,
-        }
+            CREATE TRIGGER {name}
+            AFTER INSERT OR UPDATE OF {columns} OR DELETE
+            ON {table}
+            FOR EACH ROW EXECUTE PROCEDURE {schema}.{function}(%s, %s)
+        """.format(
+            name=quote(trigger),
+            columns=', '.join(map(quote, columns)),
+            table=quote(table),
+            schema=quote(application.schema),
+            function=quote(capture),
+        )
 
-        cursor.execute("DROP TRIGGER IF EXISTS %s ON %s" % (trigger, table))
+        cursor.execute("DROP TRIGGER IF EXISTS {name} ON {table}".format(
+            name=quote(trigger),
+            table=quote(table),
+        ))
+
         cursor.execute(statement, (
             application.get_queue_name(name),
             get_version(configuration)),
@@ -174,7 +179,10 @@ def drop_trigger(application, cursor, name, table):
     Drops a capture trigger on the provided table for the specified group.
     """
     logger.info('Dropping capture trigger on %s...', table)
-    cursor.execute('DROP TRIGGER %s ON %s' % (application.get_trigger_name(name), table))
+    cursor.execute('DROP TRIGGER {name} ON {table}'.format(
+        name=quote(application.get_trigger_name(name)),
+        table=quote(table),
+    ))
 
 
 def unconfigure_group(application, cursor, name, configuration):
