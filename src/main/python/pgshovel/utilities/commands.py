@@ -2,13 +2,14 @@ import atexit
 import functools
 import inspect
 import json
+import logging
+import logging.config
 import optparse
 import pkg_resources
 import sys
 import textwrap
 from datetime import timedelta
 
-import logging.config
 from pkg_resources import cleanup_resources
 from tabulate import tabulate
 
@@ -17,6 +18,9 @@ from pgshovel.application import (
     Environment,
 )
 from pgshovel.utilities.templates import resource_filename
+
+
+logger = logging.getLogger(__name__)
 
 
 class Option(object):
@@ -88,20 +92,24 @@ def command(function=None, *args, **kwargs):
 
             logging.config.fileConfig(logging_configuration)
 
-            environment = Environment(options.zookeeper_hosts)
-            application = Application(
-                options.application,
-                environment,
-            )
-
             try:
-                return function(options, application, *arguments)
-            except TypeError as e:
-                if str(e).startswith('%s() takes ' % function.__name__):
-                    parser.print_usage(sys.stderr)
-                    sys.exit(1)
-                else:
-                    raise
+                environment = Environment(options.zookeeper_hosts)
+                application = Application(
+                    options.application,
+                    environment,
+                )
+
+                try:
+                    return function(options, application, *arguments)
+                except TypeError as e:
+                    if str(e).startswith('%s() takes ' % function.__name__):
+                        parser.print_usage(sys.stderr)
+                        sys.exit(1)
+                    else:
+                        raise
+            except Exception as error:
+                logger.exception(error)
+                sys.exit(1)
 
         return wrapper
 
