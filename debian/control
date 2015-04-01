@@ -2,7 +2,7 @@ Source: pgshovel
 Section: python
 Priority: extra
 Maintainer: Disqus Developers <dev@disqus.com>
-Build-Depends: debhelper (>= 9), python, dh-virtualenv, protobuf-compiler
+Build-Depends: debhelper (>= 9), python, python-dev, dh-virtualenv, protobuf-compiler, libpq-dev
 Standards-Version: 3.9.5
 
 Package: pgshovel
