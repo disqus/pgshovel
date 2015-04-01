@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 %:
-	make build
+	make clean build
 
 	# PGUSER needs to be set to the curent user because we get called with
 	# fakeroot which will cause tests to fail if user "root" doesn't exist
