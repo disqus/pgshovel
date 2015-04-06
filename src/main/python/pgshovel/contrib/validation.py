@@ -37,13 +37,14 @@ class SnapshotHandler(object):
     A simple snapshot handler that stores data using Symax LMDB (Lightning
     Memory-Mapped Database). This is primarily useful for testing.
     """
-    def __init__(self, environment):
+    def __init__(self, application, environment):
+        self.application = application
         self.environment = environment
         self.builder = SnapshotBuilder()
 
     def __call__(self, group, configuration, cursor, events):
         with self.environment.begin(write=True) as transaction:
-            for snapshot in self.builder(group, configuration, cursor, events):
+            for snapshot in self.builder(self.application, group, configuration, cursor, events):
                 key = get_key(group, snapshot)
 
                 previous = transaction.get(key)
@@ -60,10 +61,13 @@ class SnapshotHandler(object):
     @classmethod
     def build(cls, application, path):
         # TODO: Expose options to `lmdb.open` as command line options.
-        return cls(lmdb.open(
-            path,
-            map_size=int(1e9),  # totally arbitrary choice
-        ))
+        return cls(
+            application,
+            lmdb.open(
+                path,
+                map_size=int(1e9),  # totally arbitrary choice
+            )
+        )
 
 
 
@@ -115,7 +119,7 @@ def validate(options, application, path, *groups):
                     keys = [r[0] for r in rows]
 
                     with connection.cursor() as scursor:
-                        snapshots = get_snapshot(scursor, keys)
+                        snapshots = get_snapshot(application, scursor, keys)
                         for current in snapshots:
                             key = get_key(group, current)
                             stored = transaction.get(key)

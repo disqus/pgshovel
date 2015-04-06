@@ -1,13 +1,17 @@
 import functools
 import itertools
 import operator
+import uuid
 from collections import (
     defaultdict,
     namedtuple,
 )
 from datetime import datetime
 
-from pgshovel.utilities.postgresql import pg_date_format
+from pgshovel.utilities.postgresql import (
+    pg_date_format,
+    quote,
+)
 
 
 class Column(namedtuple('Column', 'table name')):
@@ -211,22 +215,39 @@ def build_result_expander(root):
     return functools.partial(build, root)
 
 
-Transaction = namedtuple("Transaction", "id timestamp")
+Transaction = namedtuple("Transaction", "id timestamp node")
 Snapshot = namedtuple("Snapshot", "key state transaction")
+
+SELECT_TRANSACTION_METADATA_TEMPLATE = """\
+    SELECT
+        txid_current(),
+        extract(epoch from NOW()) * 1e6::bigint,
+        convert_from(value, 'utf-8')
+    FROM
+        {schema}.configuration
+    WHERE
+        key = %s
+"""
 
 
 def build_snapshotter(tree):
     statement = build_statement(tree)
     expand = build_result_expander(tree)
 
-    def snapshot(cursor, keys):
+    def snapshot(application, cursor, keys):
         if not keys:
             return
 
         # Fetch the transaction metadata.
-        cursor.execute("SELECT txid_current(), extract(epoch from NOW()) * 1e6::bigint")
-        (result,) = cursor.fetchall()
-        transaction = Transaction(*result)
+        cursor.execute(
+            SELECT_TRANSACTION_METADATA_TEMPLATE.format(
+                schema=quote(application.schema),
+            ),
+            ('node_id',),
+        )
+        ((txid, epoch, node_id,),) = cursor.fetchall()
+
+        transaction = Transaction(txid, epoch, node_id,)
 
         seen = set()
 
@@ -243,18 +264,3 @@ def build_snapshotter(tree):
             yield Snapshot(key, None, transaction)
 
     return snapshot
-
-
-if __name__ == "__main__":
-    import psycopg2
-    import sys
-    from pgshovel.interfaces.groups_pb2 import TableConfiguration
-    from pgshovel.utilities.protobuf import TextCodec
-
-    connection = psycopg2.connect(sys.argv[1])
-    table = TextCodec(TableConfiguration).decode(open(sys.argv[2]).read())
-    snapshot = build_snapshotter(build_tree(table))
-
-    with connection.cursor() as cursor:
-        for result in snapshot(cursor, map(int, sys.argv[3:])):
-            print result

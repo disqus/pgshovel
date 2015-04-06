@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+import uuid
 from Queue import Empty
 from cPickle import dumps
 from contextlib import contextmanager
@@ -52,9 +53,9 @@ def test_event_deserialization():
         'operation',
         ('new:data', 'old:data'),
         'version',
-        (1, time.time() * 100000)
+        (1, time.time() * 100000, uuid.uuid1().hex)
     )
-    payload = '0:%s' % dumps(data)
+    payload = '1:%s' % dumps(data)
     assert payload.count(':') > 1  # ensure test invariant
     event = Event(1, payload)
     assert event.data == data

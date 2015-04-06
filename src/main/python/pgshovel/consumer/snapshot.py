@@ -93,13 +93,13 @@ def create_simple_snapshot_builder(configuration, compact=True):
         'DELETE': delete_snapshot,
     }
 
-    def resolve(cursor, events):
+    def resolve(application, cursor, events):
         for event in events:
             handler = handlers[event.data.operation]
             for snapshot in handler(event):
                 yield snapshot
 
-    def resolve_compact(cursor, events):
+    def resolve_compact(application, cursor, events):
         snapshots = {}
         for event in events:
             handler = handlers[event.data.operation]
@@ -154,7 +154,7 @@ def create_complex_snapshot_builder(configuration):
 
     extract = build_key_extractor()
 
-    def resolve(cursor, events):
+    def resolve(application, cursor, events):
         # Gather all of the events by the tables that they were performed on.
         sources = defaultdict(list)
         for event in events:
@@ -185,7 +185,7 @@ def create_complex_snapshot_builder(configuration):
                 logger.debug('Retrieved %s root keys from %s inputs.', len(res), len(tup))
                 keys.update(res)
 
-        return snapshot(cursor, keys)
+        return snapshot(application, cursor, keys)
 
     return resolve
 
@@ -220,7 +220,7 @@ class SnapshotBuilder(object):
     def __init__(self):
         self.__builder_cache = {}
 
-    def __call__(self, group, configuration, cursor, events):
+    def __call__(self, application, group, configuration, cursor, events):
         # WARNING: This assumes that the ``configuration`` is immutable!
         ident = id(configuration)
         builder = self.__builder_cache.get(ident)
@@ -229,7 +229,7 @@ class SnapshotBuilder(object):
             # builders around forever.
             builder = self.__builder_cache[ident] = create_snapshot_builder(configuration)
 
-        snapshots = list(builder(cursor, events))
+        snapshots = list(builder(application, cursor, events))
         logger.debug('Converted %s events to %s snapshots.', len(events), len(snapshots))
         return snapshots
 
@@ -238,7 +238,8 @@ class StreamSnapshotHandler(Handler):
     """
     Writes event payloads to a stream.
     """
-    def __init__(self, stream, template):
+    def __init__(self, application, stream, template):
+        self.application = application
         self.stream = stream
         self.template = template
         self.builder = SnapshotBuilder()
@@ -249,11 +250,11 @@ class StreamSnapshotHandler(Handler):
         with self.__lock:
             write = self.stream.write
             template = self.template
-            snapshots = self.builder(group, configuration, cursor, events)
+            snapshots = self.builder(self.application, group, configuration, cursor, events)
             for snapshot in snapshots:
                 write(template.format(group=group, configuration=configuration, snapshot=snapshot))
             self.stream.flush()
 
     @classmethod
     def build(cls, application, path='/dev/stdout', template='{group} {snapshot}\n'):
-        return cls(open(path, 'w'), template)
+        return cls(application, open(path, 'w'), template)

@@ -38,10 +38,21 @@ def check_stop(runnable):
 
 States = collections.namedtuple('States', 'old new')
 Data = collections.namedtuple('Data', 'table operation states version transaction')
-Transaction = collections.namedtuple('Transaction', 'id time')
+Transaction = collections.namedtuple('Transaction', 'id time node')
 
 
 def parse_version_0(payload):
+    table, operation, states, version, (txid, txtime) = loads(payload)
+    return Data(
+        table,
+        operation,
+        States(*states),
+        version,
+        Transaction(txid, txtime, None),
+    )
+
+
+def parse_version_1(payload):
     table, operation, states, version, transaction = loads(payload)
     return Data(
         table,
@@ -54,6 +65,7 @@ def parse_version_0(payload):
 
 PAYLOAD_PARSERS = {
     0: parse_version_0,
+    1: parse_version_1,
 }
 
 

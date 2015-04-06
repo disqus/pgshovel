@@ -150,5 +150,5 @@ def snapshot(options, application, group, *keys):
 
         dsn = configuration.database.connection.dsn
         with psycopg2.connect(dsn) as connection, connection.cursor() as cursor:
-            for result in get_snapshot(cursor, map(int, keys)):
+            for result in get_snapshot(application, cursor, map(int, keys)):
                 print result

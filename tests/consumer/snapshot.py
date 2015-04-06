@@ -1,5 +1,6 @@
 import cPickle as pickle
 import json
+import uuid
 
 from pgshovel.consumer.snapshot import create_simple_snapshot_builder
 from pgshovel.consumer.worker import Event
@@ -28,9 +29,10 @@ table {
 
 builder = create_simple_snapshot_builder(configuration)
 
+node_id = uuid.uuid1().hex
 
 def payload(table, event, states, version, transaction):
-    return '0:%s' % pickle.dumps((
+    return '1:%s' % pickle.dumps((
         table,
         event,
         states,
@@ -52,17 +54,17 @@ def test_snapshot_insert():
             },
         ),
         'version',
-        (1, 1),
+        (1, 1, node_id),
     ))
 
-    snapshots = list(builder(None, (event,)))
+    snapshots = list(builder(None, None, (event,)))
     assert snapshots == [
         Snapshot(
             key=1,
             state=State({  # note the lack of other keys not present in configuration
                 "username": "username",
             }),
-            transaction=Transaction(id=1, timestamp=1),
+            transaction=Transaction(id=1, timestamp=1, node=node_id),
         )
     ]
 
@@ -82,17 +84,17 @@ def test_snapshot_update_in_place():
             },
         ),
         'version',
-        (1, 1),
+        (1, 1, node_id),
     ))
 
-    snapshots = list(builder(None, (event,)))
+    snapshots = list(builder(None, None, (event,)))
     assert snapshots == [
         Snapshot(
             key=1,
             state=State({
                 "username": "new username",
             }),
-            transaction=Transaction(id=1, timestamp=1),
+            transaction=Transaction(id=1, timestamp=1, node=node_id),
         ),
     ]
 
@@ -112,22 +114,22 @@ def test_snapshot_update_moved():
             },
         ),
         'version',
-        (1, 1),
+        (1, 1, node_id),
     ))
 
-    snapshots = list(builder(None, (event,)))
+    snapshots = list(builder(None, None, (event,)))
     assert sorted(snapshots) == [
         Snapshot(
             key=1,
             state=None,
-            transaction=Transaction(id=1, timestamp=1),
+            transaction=Transaction(id=1, timestamp=1, node=node_id),
         ),
         Snapshot(
             key=2,
             state=State({
                 "username": "new username",
             }),
-            transaction=Transaction(id=1, timestamp=1),
+            transaction=Transaction(id=1, timestamp=1, node=node_id),
         ),
     ]
 
@@ -144,15 +146,15 @@ def test_snapshot_delete():
             None,
         ),
         'version',
-        (1, 1),
+        (1, 1, node_id),
     ))
 
-    snapshots = list(builder(None, (event,)))
+    snapshots = list(builder(None, None, (event,)))
     assert snapshots == [
         Snapshot(
             key=1,
             state=None,
-            transaction=Transaction(id=1, timestamp=1),
+            transaction=Transaction(id=1, timestamp=1, node=node_id),
         ),
     ]
 
@@ -169,7 +171,7 @@ events = (
             },
         ),
         'version',
-        (1, 1),
+        (1, 1, node_id),
     )),
     Event(2, payload(
         'user',
@@ -185,14 +187,14 @@ events = (
             },
         ),
         'version',
-        (1, 1),
+        (1, 1, node_id),
     )),
 )
 
 
 def test_snapshot_no_compact():
     builder = create_simple_snapshot_builder(configuration, compact=False)
-    snapshots = list(builder(None, events))
+    snapshots = list(builder(None, None, events))
     assert len(snapshots) == 2
 
     assert snapshots[0].state == State({
@@ -206,7 +208,7 @@ def test_snapshot_no_compact():
 
 def test_snapshot_compact():
     builder = create_simple_snapshot_builder(configuration, compact=True)
-    snapshots = list(builder(None, events))
+    snapshots = list(builder(None, None, events))
     assert len(snapshots) == 1
 
     assert snapshots[0].state == State({
