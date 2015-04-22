@@ -15,7 +15,7 @@ clean:
 	git clean -fdx - $(JAVA_OUT) $(PYTHON_OUT) $(TESTS_FOLDER)
 
 build: $(JAVA_OUT) $(PYTHON_OUT)
-	protoc -I $(PROTO_FOLDER) --java_out=$(JAVA_OUT) --python_out=$(PYTHON_OUT) $$(find $(PROTO_FOLDER) -name *.proto)
+	protoc -I $(PROTO_FOLDER) --java_out=$(JAVA_OUT) --python_out=$(PYTHON_OUT) $$(find $(PROTO_FOLDER) -name "*.proto")
 
 install: build
 	pip install .
