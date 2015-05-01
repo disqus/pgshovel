@@ -1,0 +1,7 @@
+# the directory where the snapshot is stored.
+dataDir={tmp_dir}
+# the port at which the clients will connect
+clientPort={port}
+clientPortAddress={host}
+# disable the per-ip limit on the number of connections since this is a non-production config
+maxClientCnxns=0
