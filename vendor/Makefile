@@ -18,6 +18,10 @@ KAFKA_FILENAME = $(KAFKA_FULL)-src
 KAFKA_URL = $(APACHE_MIRROR)/kafka/$(KAFKA_VERSION)/$(KAFKA_FILENAME).tgz
 KAFKA_SRC_TGZ = $(notdir $(KAFKA_URL))
 
+all: \
+	kafka \
+	postgres \
+	zookeeper
 
 $(POSTGRES_FULL):
 	curl -O $(POSTGRES_URL)
@@ -28,7 +32,7 @@ $(POSTGRES_BUILD_DIR):
 	mkdir -p POSTGRES_BUILD_DIR
 
 postgres: $(POSTGRES_FULL)
-	cd $(POSTGRES_FULL) && ./configure --postgresfix=$(POSTGRES_BUILD_DIR) --with-python && make && make install check clean
+	cd $(POSTGRES_FULL) && ./configure --prefix=$(POSTGRES_BUILD_DIR) --with-python && make && make install check clean
 	rm -f postgres && ln -fs $(POSTGRES_FULL) postgres
 
 $(ZOOKEEPER_FULL):
