@@ -1,19 +1,14 @@
 import abc
 import contextlib
-import functools
-import itertools
 import logging
 import os
 import os.path
-import re
-import select
 import shutil
 import socket
 import subprocess
 import tempfile
 import threading
 import time
-import urlparse
 import uuid
 
 
@@ -82,7 +77,7 @@ class ManagedProcess(threading.Thread):
         self.child.wait()
 
         if not self.stop_requested:
-            raise self.ServiceRunError(
+            raise self.ManagedProcessError(
                 self,
                 'Crashed during startup with %s exit code' % self.child.returncode
             )
@@ -104,7 +99,7 @@ class ManagedProcess(threading.Thread):
 
             time.sleep(0.1)
 
-        raise self.ServiceRunError(
+        raise self.ManagedProcessError(
             self,
             'Could not find %r in %d seconds, giving up.' % (pattern, timeout)
         )
@@ -125,7 +120,7 @@ class ManagedProcess(threading.Thread):
         self.join(timeout=timeout)
 
         if self.is_alive():
-            self.logger.warn('Thread did not terminate, and is still alive')
+            self.logger.warning('Thread did not terminate, and is still alive')
 
         return self.child.returncode
 

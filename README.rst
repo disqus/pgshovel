@@ -1,80 +1,158 @@
-PostgreSQL Transaction Shovel
-=============================
+pgshovel
+########
 
-Installation
-------------
+``pgshovel`` is a `change data capture`_ system for PostgreSQL_, built on top of
+`Apache ZooKeeper`_, pgq (part of SkyTools_), and database triggers.
 
-* The PGQ extension must be available on the databases that will contain
-  capture groups, and the ``pgqd`` ticker should be running for those databases.
-* Prepared transactions (two-phase commit) must be enabled by setting the
-  PostgreSQL ``max_prepared_transactions`` configuration parameter to a value
-  greater than zero. (Since prepared transactions are only opened during
-  cluster modification, this does not need to be a very large value. There will
-  be rarely more than one prepared transaction running on a single database at
-  a time, with the exception of concurrent cluster modifications.)
-* The ``plpythonu`` language must be available.
+It is inspired by LinkedIn's Databus_ project, and trigger-based asynchronous
+replication solutions for PostgreSQL such as Slony_ and Londiste (also part of
+SkyTools).
 
-Command Overview
-----------------
+ZooKeeper is used for storing cluster configurations and ensuring that the
+configurations remain synchronized with the state of all databases in the
+cluster. pgq is used for buffering mutation records until they are collected by
+the relay and forwarded to their final destination.
 
-All commands take a ``--zookeeper-hosts`` option that can be used to specify
-the ZooKeeper connection path.
+Concepts
+========
 
-For detailed usage notes, pass the ``-h`` or ``--help`` flag to the command.
+Cluster
+-------
 
-Cluster Initialization
-~~~~~~~~~~~~~~~~~~~~~~
+A cluster contains replication sets and multiple databases.
+
+Replication Set
+---------------
+
+Replication sets contain a collection of tables that are replicated together.
+
+Where this differs from other replication tooling is that replication sets live
+on multiple databases, and there is no distinguishing between primary and
+replica databases in a replication set.
+
+Instead, triggers are installed on **all** databases in the replication set,
+but only writes performed to the origin database are captured and collected by
+the relay. (All other databases will simply report no mutation activity.)
+
+Relay
+-----
+
+The relay consumes batches of mutations from all databases within the
+replication set, and forwards those mutation batches to their destination.
+
+Usage
+=====
+
+Installation Requirements
+-------------------------
+
+* A running ZooKeeper cluster.
+* A running ``pgq`` ticker for all databases.
+* PostgreSQL must have:
+
+  * the SkyTools extension installed,
+  * been compiled with ``--with-python``,
+  * a non-zero value for the ``max_prepared_transactions`` configuration
+    parameter. (This is required to ensure that all databases have been
+    configured with the same version of the replication set configuration.)
+
+Creating a Cluster
+------------------
 
 ::
 
     pgshovel-initialize-cluster
 
-Creating a Capture Group
-~~~~~~~~~~~~~~~~~~~~~~~~
+::
+
+    pgshovel-create-set example < configuration
 
 ::
 
-    pgshovel-create-group $NAME < configuration
-
-Listing Capture Groups
-~~~~~~~~~~~~~~~~~~~~~~
+    pgshovel-list-sets
 
 ::
 
-    pgshovel-list-groups
+    pgshovel-inspect-set example
 
-
-Retrieving Details about a Capture Group
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-::
-
-    pgshovel-inspect-group $NAME > configuration
-
-Updating a Capture Group
-~~~~~~~~~~~~~~~~~~~~~~~~
+Running a Relay
+---------------
 
 ::
 
-    pgshovel-update-group $NAME[@$VERSION] < configuration
+    pgshovel-relay example consumer
 
-Moving Capture Group(s) to a new Database en Masse
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-::
-
-    pgshovel-move-group $NAME[@$VERSION] ... < database
-
-Dropping a Capture Group
-~~~~~~~~~~~~~~~~~~~~~~~~
+Updating a Replication Set
+--------------------------
 
 ::
 
-    pgshovel-drop-group $NAME[@$VERSION]
+    pgshovel-upgrade-group example < configuration
+
+Dropping a Replication Set
+--------------------------
+
+::
+
+    pgshovel-drop-group example
+
+Operations
+==========
+
+Bootstrapping Consumers
+-----------------------
+
+Upgrades
+--------
+
+Monitoring
+----------
+
+Planned Replica Promotion
+-------------------------
+
+Unplanned Replica Promotion
+---------------------------
+
+Comparison with Logical Decoding
+================================
+
+PostgreSQL, beginning with 9.4, provides a functionality called `logical
+decoding`_ which can be used to access a change stream of data from a
+PostgreSQL database. However, trigger-based replication has advantages over
+logical decoding in a few select use cases:
+
+* You only want to monitor specific tables, and not all of the columns within
+  those tables. (For instance, you'd like to avoid creating mutation records
+  for updates to denormalized data.)
+* You run an older version of PostgreSQL (and don't intend to -- or cannot --
+  upgrade in the near future.)
+
+However, trigger-based replication suffers in environments that experience high
+sustained write loads due to write amplification -- every row affected by a
+mutation operation must be recorded to the event table, and incurs all of the
+typical overhead of a database write.
+
+In write-heavy environments, it is typically a better choice to choice use
+logical decoding (assuming you can run PostgreSQL 9.4), foregoing some
+configuration flexibility for increased throughput.
 
 Development
------------
+===========
 
-::
+To install the project and all dependencies::
 
     make develop
+
+To run the test suite::
+
+    make test
+
+
+.. _Databus: https://github.com/linkedin/databus
+.. _PostgreSQL: http://www.postgresql.org/
+.. _SkyTools: http://skytools.projects.pgfoundry.org/
+.. _Slony: http://www.slony.info/
+.. _`change data capture`: http://en.wikipedia.org/wiki/Change_data_capture
+.. _`logical decoding`: http://www.postgresql.org/docs/9.4/static/logicaldecoding-explanation.html
+.. _`Apache ZooKeeper`: https://zookeeper.apache.org/

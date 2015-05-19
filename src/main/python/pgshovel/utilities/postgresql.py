@@ -1,9 +1,7 @@
 import logging
-import sys
 import threading
 import uuid
 from contextlib import contextmanager
-from datetime import timedelta
 
 import psycopg2
 
@@ -17,55 +15,21 @@ def quote(value):
     return '"%s"' % (value.replace('"', '""'),)
 
 
-def pg_date_format(value):
-    """
-    Converts a datetime to the ISO 8601-ish format used by PostgreSQL.
-
-    The exact implementation of the format is undocumented, but it generally
-    optimizes by dropping off implied characters (such as right padding on
-    microsecond values, or the minute part of timezone specifications that
-    contain only hours.)
-    """
-    bits = []
-
-    bits.append(value.strftime('%Y-%m-%d %H:%M:%S'))
-
-    if value.microsecond:
-        bits.append(('.%06d' % value.microsecond).rstrip('0'))
-
-    # The basic logic here was extracted from
-    # https://hg.python.org/cpython/file/24d4152b0040/Lib/datetime.py#l1163 and
-    # slightly modified for Python 2.X compatibility.
-    if value.tzinfo is not None:
-        offset = value.utcoffset()
-        if offset.days < 0:
-            sign = "-"
-            offset = -offset
-        else:
-            sign = "+"
-
-        hours, minutes = divmod(offset.total_seconds(), timedelta(hours=1).total_seconds())
-        assert not minutes % 60, "whole minute"
-        minutes //= 60
-        assert 0 <= hours < 24
-        bits.append('%s%02d' % (sign, hours))
-        if minutes:
-            bits.append(':%02d' % (minutes,))
-
-    return ''.join(bits)
-
-
 class UnrecoverableTransactionFailure(Exception):
     pass
 
 
 class Transaction(object):
-    def __init__(self, connection, name, stream=sys.stderr, unrecoverable_errors=(UnrecoverableTransactionFailure,)):
+    def __init__(self, connection, name, unrecoverable_errors=(UnrecoverableTransactionFailure,)):
         self.connection = connection
         self.xid = self.connection.xid(0, 'pgshovel:%s' % (name,), uuid.uuid1().hex)
+
+        logger.info('Beginning %s...', self)
         self.connection.tpc_begin(self.xid)
-        self.stream = stream
         self.unrecoverable_errors = unrecoverable_errors
+
+    def __str__(self):
+        return 'prepared transaction %s on %s' % (str(self.xid), self.connection.dsn)
 
     def __enter__(self):
         self.prepare()
@@ -83,30 +47,31 @@ class Transaction(object):
         else:
             self.commit()
 
-    def __abort_on_failure(self, callable):
-        self.stream.write("Attempting to perform %r for %s...\n" % (callable, self.xid))
+    def __abort_on_failure(self, operation, callable):
+        logger.info("Attempting to %s %s...", operation, self)
         try:
             callable()
         except Exception as error:
-            self.stream.write(
-                "Could not perform %r for %s on %r due to error: %s."
-                "The transaction will need to be manually recovered.\n" % (
-                callable,
-                self.xid,
-                self.connection,
+            logger.fatal(
+                "Could not %s transaction %s due to error: %s."
+                "The transaction will need to be manually recovered.\n",
+                operation,
+                self,
                 error,
-            ))
+            )
             raise chained('FATAL ERROR: Encountered transaction failure that requires manual intervention!', RuntimeError)
 
     def prepare(self):
-        self.stream.write('Preparing transaction %s on %r...\n' % (self.xid, self.connection))
+        logger.info('Preparing %s...', self)
         self.connection.tpc_prepare()
 
     def commit(self):
-        self.__abort_on_failure(self.connection.tpc_commit)
+        self.__abort_on_failure('commit', self.connection.tpc_commit)
+        logger.info('Succesfully committed %s.', self)
 
     def rollback(self):
-        self.__abort_on_failure(self.connection.tpc_rollback)
+        self.__abort_on_failure('rollback', self.connection.tpc_rollback)
+        logger.info('Successfully rolled back %s.', self)
 
 
 @contextmanager
@@ -153,13 +118,12 @@ class ManagedConnection(object):
 
         self.__connection = None
 
-        # Barrier for when the `__connection` attribute is being modified
-        # set/unset is being mutated to avoid data races.
-        self.__meta_lock = threading.Lock()
+        # Barrier for when the `__connection` attribute is being modified.
+        self.__connection_change_lock = threading.Lock()
 
-        # Barrier to prevent multiple threads from using the connection at
-        # once.
-        self.__lock = threading.Lock()
+        # Barrier to prevent multiple threads from utilizing the connection at
+        # the same time to avoid interleaving transactions on the connection.
+        self.__connection_usage_lock = threading.Lock()
 
     def __str__(self):
         return '%s' % (self.dsn,)
@@ -173,37 +137,41 @@ class ManagedConnection(object):
 
     @property
     def closed(self):
-        with self.__meta_lock:
+        with self.__connection_change_lock:
             if self.__connection is None:
                 return True
             return self.__connection.closed
 
     @property
     def status(self):
-        with self.__meta_lock:
+        with self.__connection_change_lock:
             if self.__connection is None:
                 return None
             return self.__connection.get_transaction_status()
 
     @contextmanager
-    def __call__(self):
+    def __call__(self, close=False):
         # TODO: Support the ability to be non-blocking.
-        with self.__lock:
-            with self.__meta_lock:
+        def close_connection():
+            try:
+                self.__connection.close()
+            except Exception as error:
+                logger.info('Could not close connection: %s', error, exc_info=True)
+            finally:
+                with self.__connection_change_lock:
+                    self.__connection = None
+
+        with self.__connection_usage_lock:
+            with self.__connection_change_lock:
                 if not self.__connection or self.__connection.closed:
+                    logger.debug('Connecting to %s...', self.dsn)
                     self.__connection = psycopg2.connect(self.dsn)
 
             try:
                 yield self.__connection
             except Exception as error:
                 if isinstance(error, psycopg2.Error):
-                    try:
-                        self.__connection.close()
-                    except Exception as error:
-                        logger.info('Could not close connection during recovery: %s', error, exc_info=True)
-                    finally:
-                        with self.__meta_lock:
-                            self.__connection = None
+                    close_connection()
                 else:
                     if self.__connection.get_transaction_status() in self.STATUS_IN_TRANSACTION:
                         logger.warning('Forcing connection rollback after exception thrown in connection block: %s', error, exc_info=True)
@@ -217,3 +185,6 @@ class ManagedConnection(object):
                     # used again.
                     self.__connection.rollback()
                     raise RuntimeError("Did not commit or rollback open transaction before returning connection. Were you born in a barn? (We rolled it back for you, anyway.)")
+
+                if close:
+                    close_connection()

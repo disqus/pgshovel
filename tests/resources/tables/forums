@@ -1,4 +1,0 @@
-name: "forums"
-primary_key: "id"
-columns: "founder_id"
-columns: "name"

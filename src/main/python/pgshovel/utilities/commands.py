@@ -1,26 +1,38 @@
-import atexit
 import functools
 import inspect
 import json
 import logging
 import logging.config
 import optparse
+import os
 import pkg_resources
 import sys
 import textwrap
+from ConfigParser import (
+    NoOptionError,
+    SafeConfigParser,
+)
 from datetime import timedelta
 
-from pkg_resources import cleanup_resources
 from tabulate import tabulate
 
-from pgshovel.application import (
-    Application,
+from pgshovel.cluster import (
+    Cluster,
     Environment,
 )
-from pgshovel.utilities.templates import resource_filename
+from pgshovel.utilities.templates import (
+    resource_filename,
+    resource_stream,
+)
 
 
 logger = logging.getLogger(__name__)
+
+
+CONFIGURATION_PATHS = (
+    os.path.expanduser('~/.pgshovel'),
+    '/etc/pgshovel.conf',
+)
 
 
 class Option(object):
@@ -56,21 +68,14 @@ def command(function=None, *args, **kwargs):
         )
 
         parser.add_option(
-            '-a', '--application',
+            '-c', '--cluster',
             default='default', metavar='NAME',
-            help='application identifier (%default)',
+            help='cluster identifier (%default)',
         )
 
         parser.add_option(
-            '--logging-configuration',
-            metavar='FILE',
-            help='logging configuration file',
-        )
-
-        parser.add_option(
-            '--zookeeper-hosts',
-            default='localhost:2181', metavar='HOSTS',
-            help='ZooKeeper connection string (%default)',
+            '-f', '--configuration-file', metavar='PATH',
+            help='path to configuration file (defaults to %s)' % ', '.join(CONFIGURATION_PATHS),
         )
 
         for option in options:
@@ -84,23 +89,27 @@ def command(function=None, *args, **kwargs):
                 print pkg_resources.get_distribution("pgshovel").version
                 sys.exit(0)
 
-            if options.logging_configuration:
-                logging_configuration = options.logging_configuration
-            else:
-                logging_configuration = resource_filename('logging.conf')
-                atexit.register(cleanup_resources)
-
-            logging.config.fileConfig(logging_configuration)
+            configuration = SafeConfigParser()
+            configuration.readfp(resource_stream('configuration/pgshovel.conf'))
+            configuration.read((options.configuration_file,) if options.configuration_file is not None else CONFIGURATION_PATHS)
 
             try:
-                environment = Environment(options.zookeeper_hosts)
-                application = Application(
-                    options.application,
+                logging_configuration = configuration.get('logging', 'configuration')
+            except NoOptionError:
+                logging_configuration = resource_filename('configuration/logging.conf')
+
+            if logging_configuration:
+                logging.config.fileConfig(logging_configuration)
+
+            try:
+                environment = Environment(configuration.get('zookeeper', 'hosts'))
+                cluster = Cluster(
+                    options.cluster,
                     environment,
                 )
 
                 try:
-                    return function(options, application, *arguments)
+                    return function(options, cluster, *arguments)
                 except TypeError as e:
                     if str(e).startswith('%s() takes ' % function.__name__):
                         parser.print_usage(sys.stderr)
@@ -133,7 +142,7 @@ formatters = {
 
 
 FormatOption = Option(
-    '-f', '--format', metavar='FORMATTER',
+    '--format', metavar='FORMATTER',
     choices=formatters.keys(),
     default='table',
     help='output formatter to use (one of: %s)' % ', '.join(sorted(formatters)),

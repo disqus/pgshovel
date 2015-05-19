@@ -1,0 +1,17 @@
+serialize = SD.get('serialize')
+if not serialize:
+    serialize = SD['serialize'] = __import__('cPickle').dumps
+
+statements = SD.get('statements')
+if not statements:
+    statements = SD['statements'] = {
+        'enqueue': plpy.prepare('SELECT pgq.insert_event($1, $2, $3)', ["text", "text", "text"]),
+    }
+
+(queue, configuration_version) = TD['args']
+plpy.execute(statements['enqueue'], (queue, 'operation', '0:%s' % serialize((
+    (TD['table_schema'], TD['table_name']),
+    TD['event'],
+    (TD['old'], TD['new']),
+    configuration_version
+))))

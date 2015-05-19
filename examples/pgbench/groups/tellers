@@ -1,5 +1,0 @@
-name: "pgbench_tellers"
-primary_key: "tid"
-columns: "bid"
-columns: "tbalance"
-columns: "filler"

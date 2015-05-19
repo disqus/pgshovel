@@ -1,30 +1,28 @@
 import code
+import logging
+import signal
 import sys
-import uuid
-
-import psycopg2
+import time
+from datetime import timedelta
 
 from pgshovel import administration
-from pgshovel.consumer.snapshot import (
-    build_snapshotter,
-    build_tree,
-)
-from pgshovel.interfaces.groups_pb2 import (
-    DatabaseConfiguration,
-    GroupConfiguration,
-)
-from pgshovel.utilities import load
+from pgshovel.interfaces.configurations_pb2 import ReplicationSetConfiguration
+from pgshovel.relay import Relay, StreamWriter
 from pgshovel.utilities.commands import (
     FormatOption,
     Option,
     command,
     formatters,
 )
+from pgshovel.utilities.datastructures import FormattedSequence
 from pgshovel.utilities.protobuf import (
     BinaryCodec,
     TextCodec,
 )
-from pgshovel.consumer import supervisor
+
+
+logger = logging.getLogger(__name__)
+
 
 def __get_codec(options, cls):
     # TODO: allow switching between text and binary codecs as an option
@@ -32,123 +30,135 @@ def __get_codec(options, cls):
 
 
 @command
-def shell(options, application):
-    with application:
+def shell(options, cluster):
+    with cluster:
         exports = {
-            'application': application,
-            'environment': application.environment,
+            'cluster': cluster,
+            'environment': cluster.environment,
         }
         return code.interact(local=exports)
 
 
 @command(description="Initializes a new cluster in ZooKeeper.")
-def initialize_cluster(options, application):
-    with application.environment:
-        return administration.initialize_cluster(application)
+def initialize_cluster(options, cluster):
+    with cluster.environment:
+        return administration.initialize_cluster(cluster)
 
 
 @command(
-    description="Lists the registered capture groups.",
+    options=(
+        Option('--force', action='store_true', default=False, help='skip version checks'),
+    )
+)
+def upgrade_cluster(options, cluster):
+    with cluster.environment:
+        return administration.upgrade_cluster(cluster, force=options.force)
+
+
+@command(
+    description="Lists the registered replication sets.",
     options=(FormatOption,),
 )
-def list_groups(options, application):
-    with application:
-        zookeeper = application.environment.zookeeper
-        names = zookeeper.get_children(application.get_group_path())
-
+def list_sets(options, cluster):
+    with cluster:
         rows = []
-        for name, (configuration, stat) in administration.fetch_groups(application, names):
+        for name, (configuration, stat) in administration.fetch_sets(cluster):
             rows.append((
                 name,
-                configuration.database.name,
-                configuration.table.name,
+                ', '.join(d.dsn for d in configuration.databases),
+                FormattedSequence([t.name for t in configuration.tables]),
                 administration.get_version(configuration),
             ))
 
-        print formatters[options.format](rows, headers=('name', 'database', 'table', 'version'))
+        print formatters[options.format](sorted(rows), headers=('name', 'database', 'table', 'version'))
 
 
-@command(description="Creates a new capture group.")
-def create_group(options, application, name):
-    with application:
-        configuration = __get_codec(options, GroupConfiguration).decode(sys.stdin.read())
-        return administration.create_group(application, name, configuration)
+@command(description="Creates a new replication set.")
+def create_set(options, cluster, name, path='/dev/stdin'):
+    with open(path, 'r') as f:
+        data = f.read()
+
+    with cluster:
+        configuration = __get_codec(options, ReplicationSetConfiguration).decode(data)
+        return administration.create_set(cluster, name, configuration)
 
 
-@command(description="Provides details about a capture group.")
-def inspect_group(options, application, name):
-    with application:
-        data, stat = application.environment.zookeeper.get(application.get_group_path(name))
-        configuration = BinaryCodec(GroupConfiguration).decode(data)
-        sys.stdout.write(__get_codec(options, GroupConfiguration).encode(configuration))
+@command(description="Provides details about a replication set.")
+def inspect_set(options, cluster, name):
+    with cluster:
+        data, stat = cluster.environment.zookeeper.get(cluster.get_set_path(name))
+        configuration = BinaryCodec(ReplicationSetConfiguration).decode(data)
+        sys.stdout.write(__get_codec(options, ReplicationSetConfiguration).encode(configuration))
         sys.stderr.write(administration.get_version(configuration) + '\n')
 
 
-@command(description="Updates a capture group.")
-def update_group(options, application, name):
-    with application:
-        configuration = __get_codec(options, GroupConfiguration).decode(sys.stdin.read())
-        return administration.update_group(application, name, configuration)
+allow_forced_removal = Option(
+    '--allow-forced-removal',
+    action='store_true',
+    default=False,
+    help='allows removing databases from ZooKeeper, even if the database '
+         'cannot be reached for the replication set to be unconfigured '
+         '(triggers dropped, queue removed, etc.)',
+)
 
 
 @command(
+    description="Updates a replication set.",
     options=(
-        Option('--force', action='store_true', help='Skip database transactions on source databases.'),
+        allow_forced_removal,
     ),
 )
-def move_groups(options, application, *names):
-    with application:
-        database = __get_codec(options, DatabaseConfiguration).decode(sys.stdin.read())
-        return administration.move_groups(application, names, database, force=options.force)
+def update_set(options, cluster, name, path='/dev/stdin'):
+    with open(path, 'r') as f:
+        data = f.read()
 
-
-@command
-def upgrade_triggers(options, application, *names):
-    with application:
-        return administration.upgrade_triggers(application, names)
+    with cluster:
+        configuration = __get_codec(options, ReplicationSetConfiguration).decode(data)
+        return administration.update_set(
+            cluster,
+            name,
+            configuration,
+            allow_forced_removal=options.allow_forced_removal,
+        )
 
 
 @command(
-    description="Drops capture group(s).",
+    description="Drops replication set(s).",
     options=(
-        Option('--force', action='store_true', help='Skip database transactions.'),
+        allow_forced_removal,
     ),
 )
-def drop_groups(options, application, *names):
-    with application:
-        return administration.drop_groups(application, names, force=options.force)
-
-
-@command(
-    options=(
-        Option('-i', '--identifier', help='The consumer identifier.'),
-        Option('-g', '--group', default='default', help='The consumer group identifier.'),
-        Option(
-            '--handler',
-            default='pgshovel.consumer.handler:StreamHandler',
-            help='The handler implementation to be used.',
-        ),
-    ),
-)
-def consumer(options, application, *args):
-    with application:
-        handler = load(options.handler).build(application, *args)
-        return supervisor.run(
-            application,
-            options.group,
-            options.identifier if options.identifier is not None else uuid.uuid1().hex,
-            handler,
+def drop_set(options, cluster, name):
+    with cluster:
+        return administration.drop_set(
+            cluster,
+            name,
+            allow_forced_removal=options.allow_forced_removal,
         )
 
 
 @command
-def snapshot(options, application, group, *keys):
-    with application:
-        raw, _ = application.environment.zookeeper.get(application.get_group_path(group))
-        configuration = BinaryCodec(GroupConfiguration).decode(raw)
-        get_snapshot = build_snapshotter(build_tree(configuration.table))
+def relay(options, cluster, set, consumer):
+    handler = StreamWriter(sys.stdout)
 
-        dsn = configuration.database.connection.dsn
-        with psycopg2.connect(dsn) as connection, connection.cursor() as cursor:
-            for result in get_snapshot(application, cursor, map(int, keys)):
-                print result
+    with cluster:
+        relay = Relay(cluster, set, consumer, handler)
+        relay.start()
+
+        def __request_exit(signal, frame):
+            logger.info('Caught signal %s, stopping...', signal)
+            relay.stop_async()
+
+        def __request_info(signal, frame):
+            for started, worker in relay.workers().values():
+                logger.info('%s uptime: %s', worker, timedelta(seconds=time.time() - started))
+
+        signal.signal(signal.SIGINT, __request_exit)
+        signal.signal(signal.SIGTERM, __request_exit)
+        signal.signal(signal.SIGINFO, __request_info)
+
+        while True:
+            relay.join(0.1)
+            if not relay.is_alive():
+                relay.result()
+                break

@@ -1,8 +1,5 @@
 # pgshovel
-CloseableQueue==0.9.1.1
-cached-property==1.0.0
 futures==2.2.0
-kafka-python==0.9.3
 kazoo==2.0
 protobuf==2.6.1
 psycopg2==2.6

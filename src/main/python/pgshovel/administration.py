@@ -1,15 +1,24 @@
 import collections
 import hashlib
+import itertools
 import logging
 import operator
-import pkg_resources
-import uuid
-from contextlib import contextmanager
+import random
 
 import psycopg2
+from pkg_resources import parse_version
 
-from pgshovel.interfaces.application_pb2 import ApplicationConfiguration
-from pgshovel.interfaces.groups_pb2 import GroupConfiguration
+from pgshovel import __version__
+from pgshovel.cluster import check_version
+from pgshovel.database import (
+    get_node_identifier,
+    get_or_set_node_identifier,
+)
+from pgshovel.interfaces.configurations_pb2 import (
+    ClusterConfiguration,
+    ReplicationSetConfiguration,
+)
+from pgshovel.utilities.datastructures import FormattedSequence
 from pgshovel.utilities.postgresql import (
     Transaction,
     managed,
@@ -23,19 +32,7 @@ from pgshovel.utilities.zookeeper import commit
 logger = logging.getLogger(__name__)
 
 
-def get_connection_for_database(database):
-    """
-    Returns a ``psycopg2.connection`` for a ``DatabaseConfiguration``.
-    """
-    return psycopg2.connect(database.connection.dsn)
-
-
-def get_version(configuration):
-    """
-    Returns a MD5 hash (version identifier) for a configuration object.
-    """
-    return hashlib.md5(configuration.SerializeToString()).hexdigest()
-
+# Database Management
 
 # The configuration table is used to store host-specific metadata, such as a
 # unique identifier that is intended to correspond to this (and only this)
@@ -51,31 +48,15 @@ CREATE TABLE IF NOT EXISTS {schema}.configuration (
 )
 """
 
-def create_configuration_table(application, cursor):
+def create_configuration_table(cluster, cursor):
     statement = INSTALL_CONFIGURATION_TABLE_STATEMENT_TEMPLATE.format(
-        schema=quote(application.schema),
+        schema=quote(cluster.schema),
     )
     cursor.execute(statement)
 
 
-def get_configuration_value(application, cursor, key, default=None):
-    statement = 'SELECT value FROM {schema}.configuration WHERE key = %s'.format(schema=quote(application.schema))
-    cursor.execute(statement, (key,))
-    results = cursor.fetchall()
-    assert len(results) <= 1
-    if results:
-        return results[0][0]
-    else:
-        return default
-
-
-def set_configuration_value(application, cursor, key, value):
-    statement = 'INSERT INTO {schema}.configuration (key, value) VALUES (%s, %s)'.format(schema=quote(application.schema))
-    cursor.execute(statement, (key, value))
-
-
-INSTALL_CAPTURE_STATEMENT_TEMPLATE = """\
-CREATE OR REPLACE FUNCTION {schema}.{name}()
+INSTALL_LOG_TRIGGER_STATEMENT_TEMPLATE = """\
+CREATE OR REPLACE FUNCTION {schema}.log()
 RETURNS trigger
 LANGUAGE plpythonu AS
 $TRIGGER$
@@ -83,212 +64,214 @@ $TRIGGER$
 {body}
 $TRIGGER$"""
 
-# TODO: Add a utility method to allow cleaning up unused versions of the
-# capture function.
 
-
-def create_capture_function(application, cursor):
+def create_log_trigger_function(cluster, cursor, node_id):
     """
-    Installs the capture function on the database for the provided cursor,
+    Installs the log trigger function on the database for the provided cursor,
     returning the function name that can be used as part of a ``CREATE
     TRIGGER`` statement.
-
-    Capture functions are versioned based by including a hash of their contents
-    as part of the function name.
-
-    This can result in multiple versions of the capture function
-    (distinguishable by their differing names) existing, and possibly utilized,
-    on the database at the same time.
-
-    The implementation of the function that is returned is the implementation
-    that was defined in the pgshovel library used to create it, so it is
-    important that administrators keep their packages up to date (or at least
-    relatively consistent among those responsible for managing the cluster) to
-    avoid having a wide range of versions in use at the same time.
     """
-    body = resource_string('sql/capture.py.tmpl').format(schema=quote(application.schema))
-    name = 'capture_%s' % (hashlib.md5(body).hexdigest(),)
-    statement = INSTALL_CAPTURE_STATEMENT_TEMPLATE.format(
-        name=quote(name),
-        schema=quote(application.schema),
+    body = resource_string('sql/log_trigger.py.tmpl')
+    statement = INSTALL_LOG_TRIGGER_STATEMENT_TEMPLATE.format(
+        schema=quote(cluster.schema),
         body=body,
-        version=pkg_resources.get_distribution("pgshovel").version,
+        version=__version__,
     )
     cursor.execute(statement)
-    return name
 
 
-def configure_database(application, cursor):
+def setup_database(cluster, cursor):
     """
     Configures a database (the provided cursor) for use with pgshovel.
 
     This function can also be used to repair a broken installation, or update
-    an existing installation's capture function.
+    an existing installation's log trigger function.
     """
     # Install PGQ if it doesn't already exist.
-    logger.info('Creating PGQ extension...')
+    logger.info('Creating PgQ extension (if it does not already exist)...')
     cursor.execute('CREATE EXTENSION IF NOT EXISTS pgq')
 
     # Install pypythonu if it doesn't already exist.
-    logger.info('Creating plpythonu language...')
+    logger.info('Creating (or updating) plpythonu language...')
     cursor.execute('CREATE OR REPLACE LANGUAGE plpythonu')
 
     # Create the schema if it doesn't already exist.
-    logger.info('Creating schema...')
+    logger.info('Creating schema (if it does not already exist)...')
     cursor.execute('CREATE SCHEMA IF NOT EXISTS {schema}'.format(
-        schema=quote(application.schema),
+        schema=quote(cluster.schema),
     ))
 
     # Create the configuration table if it doesn't already exist.
-    logger.info('Creating configuration table...')
-    create_configuration_table(application, cursor)
+    logger.info('Creating configuration table (if it does not already exist)...')
+    create_configuration_table(cluster, cursor)
+
+    # TODO: Write version to configuration table too. This is important, since
+    # a database can have a previous version if the database was previously
+    # configured, removed from all sets, then the cluster was upgraded. If the
+    # database is added **back** to the cluster, it will still have the version
+    # it was originally configured with!
 
     # Ensure that this database has already had an identifier associated with it.
     logger.info('Checking for node ID...')
-    node_id_raw = get_configuration_value(application, cursor, 'node_id')
-    if node_id_raw is not None:
-        node_id = uuid.UUID(str(node_id_raw))
-        logger.info('Discovered node ID: %s', node_id)
+    node_id = get_or_set_node_identifier(cluster, cursor)
+
+    logger.info('Installing (or updating) log trigger function...')
+    create_log_trigger_function(cluster, cursor, node_id)
+
+    return node_id
+
+
+def get_managed_databases(cluster, dsns, configure=True, skip_inaccessible=False, same_version=True):
+    """
+    Returns a dictionary of managed databases by their unique node ID. If the
+    same node is referenced multiple times (either by the same, or by different
+    DSNs), an error is raised.
+
+    If the database has not already been configured for use with pgshovel, the
+    database will be implicitly configured, unless the ``configure`` argument
+    is ``False``, in which case it will error. If the same node is attempted to
+    be configured multiple times (by providing the same DSN multiple times, or
+    diffrent DSNs that point to the same database) an error is raised to
+    prevent deadlocking during configuration.
+
+    By default, all databases must be accessible. If partial results are
+    acceptable (such as cases where databases may be expected to have
+    permanently failed), the ``skip_inaccessible`` arguments allows returning
+    only those databases that are able to be connected to and an error is
+    logged.
+    """
+    if not dsns:
+        return {}
+
+    nodes = {}
+
+    if same_version:
+        ztransaction = check_version(cluster)
     else:
-        node_id = uuid.uuid1()
-        set_configuration_value(application, cursor, 'node_id', node_id.hex)
-        logger.info('Registered node ID: %s', node_id)
+        ztransaction = cluster.environment.zookeeper.transaction()
+
+    lock_id = random.randint(-2**63, 2**63-1)  # bigint max/min
+    logger.debug('Connecting to databases: %s', FormattedSequence(dsns))
+
+    transactions = []
+
+    for dsn in dsns:
+        try:
+            connection = psycopg2.connect(dsn)
+        except Exception as error:
+            if skip_inaccessible:
+                logger.warning('%s is inaccessible due to error, skipping: %s', dsn, error)
+                continue
+            else:
+                raise
+
+        logger.debug('Checking if %s has been configured...', dsn)
+        try:
+            with connection.cursor() as cursor:
+                # TODO: Also fetch the version when that is written to the node
+                # configuration and assert that the database is up to date.
+                # (See comment in `setup_database`.)
+                node_id = get_node_identifier(cluster, cursor)
+                assert node_id is not None
+        except psycopg2.ProgrammingError:
+            if not configure:
+                raise
+
+            # TODO: Check this better to ensure this is the right type of error
+            # (make sure that is specific enough to the table not being
+            # present.)
+            logger.info('%s has not been configured for use, setting up now...', dsn)
+            connection.rollback()  # start over
+
+            transaction = Transaction(connection, 'setup-database')
+            transactions.append(transaction)
+            with connection.cursor() as cursor:
+                # To ensure that we're not attempting to configure the same
+                # database multiple times (which would result in a deadlock,
+                # since the second transaction will block indefinitely, waiting
+                # for the first transaction to be committed or rolled back) we
+                # take out an advisory lock to check that we haven't already
+                # prepared this database. (We can't simply check for the
+                # existence of the configuration table at this point, since
+                # that transaction has not been committed yet.)
+                cursor.execute('SELECT pg_try_advisory_lock(%s) as acquired', (lock_id,))
+                ((acquired,),) = cursor.fetchall()
+                assert acquired, 'could not take out advisory lock on %s (possible deadlock?)' % (connection,)
+
+                node_id = setup_database(cluster, cursor)
+        else:
+            logger.debug('%s is already configured as %s.', dsn, node_id)
+            connection.commit()
+
+        assert node_id not in nodes, 'found duplicate node: %s and %s' % (connection, nodes[node_id])
+        nodes[node_id] = connection
+
+    if transactions:
+        with managed(transactions):
+            commit(ztransaction)
+
+    return nodes
 
 
-def collect_tables(table):
-    """
-    Returns a dictionary, keyed by table name, containing all columns that
-    are watched in the associated table.
-    """
-    tables = collections.defaultdict(set)
-
-    def __collect(table):
-        columns = tables[table.name]
-        columns.add(table.primary_key)
-        columns.update(table.columns)
-
-        for join in table.joins:
-            tables[join.table.name].add(join.foreign_key)
-            __collect(join.table)
-
-    __collect(table)
-
-    return tables
+# Trigger Management
 
 
-def setup_triggers(application, cursor, name, configuration):
-    tables = collect_tables(configuration.table)
+def setup_triggers(cluster, cursor, name, configuration):
+    trigger = cluster.get_trigger_name(name)
 
-    logger.info('Installing capture function...')
-    capture = create_capture_function(application, cursor)
-
-    trigger = application.get_trigger_name(name)
-
-    def create_trigger(table, columns):
-        logger.info('Installing capture trigger on %s...', table)
+    def create_trigger(schema, table, columns):
+        logger.info('Installing (or replacing) log trigger on %s.%s...', schema, table)
 
         statement = """
             CREATE TRIGGER {name}
             AFTER INSERT OR UPDATE OF {columns} OR DELETE
-            ON {table}
-            FOR EACH ROW EXECUTE PROCEDURE {schema}.{function}(%s, %s)
+            ON {schema}.{table}
+            FOR EACH ROW EXECUTE PROCEDURE {cluster_schema}.log(%s, %s)
         """.format(
             name=quote(trigger),
             columns=', '.join(map(quote, columns)),
             table=quote(table),
-            schema=quote(application.schema),
-            function=quote(capture),
+            schema=quote(schema),
+            cluster_schema=quote(cluster.schema),
         )
 
-        cursor.execute("DROP TRIGGER IF EXISTS {name} ON {table}".format(
+        cursor.execute("DROP TRIGGER IF EXISTS {name} ON {schema}.{table}".format(
             name=quote(trigger),
+            schema=quote(schema),
             table=quote(table),
         ))
 
         cursor.execute(statement, (
-            application.get_queue_name(name),
+            cluster.get_queue_name(name),
             get_version(configuration)),
         )
 
-    for table, columns in tables.items():
-        create_trigger(table, columns)
+    for table in configuration.tables:
+        create_trigger(table.schema, table.name, table.columns)
 
 
-def configure_group(application, cursor, name, configuration):
+def drop_trigger(cluster, cursor, name, schema, table):
     """
-    Configures a capture group using the provided name and configuration data.
-
-    This function also ensures that the capture function for the group is the
-    the implementation of the function associated with this pgshovel version.
+    Drops a log trigger on the provided table for the specified replication set.
     """
-    # Create the transaction queue if it doesn't already exist.
-    logger.info('Creating transaction queue...')
-    cursor.execute("SELECT pgq.create_queue(%s)", (application.get_queue_name(name),))
-
-    setup_triggers(application, cursor, name, configuration)
-
-
-def drop_trigger(application, cursor, name, table):
-    """
-    Drops a capture trigger on the provided table for the specified group.
-    """
-    logger.info('Dropping capture trigger on %s...', table)
-    cursor.execute('DROP TRIGGER {name} ON {table}'.format(
-        name=quote(application.get_trigger_name(name)),
+    logger.info('Dropping log trigger on %s.%s...', schema, table)
+    cursor.execute('DROP TRIGGER {name} ON {schema}.{table}'.format(
+        name=quote(cluster.get_trigger_name(name)),
+        schema=quote(schema),
         table=quote(table),
     ))
 
 
-def unconfigure_group(application, cursor, name, configuration):
+# Replication Set Management
+
+def get_version(configuration):
     """
-    Removes all triggers and capture queue for the provided group name and
-    configuration.
+    Returns a MD5 hash (version identifier) for a configuration object.
     """
-    # Drop the transaction queue if it exists.
-    logger.info('Dropping transaction queue...')
-    cursor.execute("SELECT pgq.drop_queue(%s)", (application.get_queue_name(name),))
-
-    # Drop the triggers on the destination table.
-    def uninstall_triggers(table):
-        drop_trigger(application, cursor, name, table.name)
-        for join in table.joins:
-            uninstall_triggers(join.table)
-
-    uninstall_triggers(configuration.table)
+    return hashlib.md5(configuration.SerializeToString()).hexdigest()
 
 
-def initialize_cluster(application):
-    """
-    Initialize a pgshovel cluster in ZooKeeper.
-    """
-    logger.info('Creating a new cluster for %s...', application)
-
-    configuration = ApplicationConfiguration()
-    ztransaction = application.environment.zookeeper.transaction()
-    ztransaction.create(application.path, BinaryCodec(ApplicationConfiguration).encode(configuration))
-    ztransaction.create(application.get_group_path())
-    commit(ztransaction)
-
-
-def create_group(application, name, configuration):
-    """
-    Create a capture group for the provided configuration.
-    """
-    connection = get_connection_for_database(configuration.database)
-
-    transaction = Transaction(connection, 'create-group:%s' % (name,))
-    with connection.cursor() as cursor:
-        configure_database(application, cursor)
-        configure_group(application, cursor, name, configuration)
-
-    with transaction:
-        application.environment.zookeeper.create(
-            application.get_group_path(name),
-            BinaryCodec(GroupConfiguration).encode(configuration),
-        )
-
-
-class VersionedGroup(collections.namedtuple('VersionedGroup', 'name version')):
+class VersionedSet(collections.namedtuple('VersionedSet', 'name version')):
     @classmethod
     def expand(cls, value):
         bits = value.split('@', 1)
@@ -297,186 +280,255 @@ class VersionedGroup(collections.namedtuple('VersionedGroup', 'name version')):
         elif len(bits) == 2:
             return cls(bits[0], bits[1])
         else:
-            raise AssertionError('Invalid group identifier: %r' % (value,))
+            raise AssertionError('Invalid set identifier: %r' % (value,))
 
 
-def fetch_groups(application, names):
-    groups = map(VersionedGroup.expand, names)
+def fetch_sets(cluster, names=None):
+    if names is None:
+        names = cluster.environment.zookeeper.get_children(cluster.get_set_path())
+
+    sets = map(VersionedSet.expand, names)
     paths = map(
-        application.get_group_path,
-        map(operator.attrgetter('name'), groups),
+        cluster.get_set_path,
+        map(operator.attrgetter('name'), sets),
     )
-    futures = map(application.environment.zookeeper.get_async, paths)
+    futures = map(cluster.environment.zookeeper.get_async, paths)
 
     results = []
-    decode = BinaryCodec(GroupConfiguration).decode
-    for group, future in zip(groups, futures):
+    decode = BinaryCodec(ReplicationSetConfiguration).decode
+    for s, future in zip(sets, futures):
         data, stat = future.get()
         configuration = decode(data)
-        assert group.version is None or group.version == get_version(configuration), \
-            'versions do not match (%s and %s)' % (group.version, get_version(configuration))
-        results.append((group.name, (configuration, stat)))
+        assert s.version is None or s.version == get_version(configuration), \
+            'versions do not match (%s and %s)' % (s.version, get_version(configuration))
+        results.append((s.name, (configuration, stat)))
 
     return results
 
 
-def update_group(application, name, updated_configuration):
-    (name, (current_configuration, stat)) = fetch_groups(application, (name,))[0]
+def validate_set_configuration(configuration):
+    assert len(configuration.databases) > 0, 'set must have associated databases'
 
-    transactions = []
-
-    current_tables = set(collect_tables(current_configuration.table))
-    updated_tables = set(collect_tables(updated_configuration.table))
-
-    source_connection = get_connection_for_database(current_configuration.database)
-    transactions.append(Transaction(source_connection, 'update-group:%s' % (name,)))
-    if current_configuration.database != updated_configuration.database:
-        # If the database configuration has changed, we need to ensure that the
-        # new database has the basic installation, and that all triggers are
-        # dropped from the source database for this group.
-        destination_connection = get_connection_for_database(updated_configuration.database)
-        transactions.append(Transaction(destination_connection, 'update-group:%s' % (name,)))
-        with destination_connection.cursor() as cursor:
-            configure_database(application, cursor)
-
-        with source_connection.cursor() as cursor:
-            unconfigure_group(application, cursor, name, current_configuration)
-    else:
-        # If the database configuration has *not* changed, we need to ensure
-        # that any tables that are no longer monitored have their triggers
-        # removed before continuing.
-        destination_connection = source_connection
-
-        with source_connection.cursor() as cursor:
-            dropped_tables = current_tables - updated_tables
-            for table in dropped_tables:
-                drop_trigger(application, cursor, name, table)
-
-    with destination_connection.cursor() as cursor:
-        configure_group(application, cursor, name, updated_configuration)
-
-    with managed(transactions):
-        application.environment.zookeeper.set(
-            application.get_group_path(name),
-            BinaryCodec(GroupConfiguration).encode(updated_configuration),
-            version=stat.version,
-        )
+    # TODO: It might make sense to normalize the database dsns here just to be
+    # doubly safe.
+    dsns = set()
+    for database in configuration.databases:
+        assert database.dsn not in dsns, 'duplicate databases not allowed: %s' % (database.dsn,)
+        dsns.add(database.dsn)
 
 
-def collect_groups_by_database(groups):
-    # TODO: Add a docstring here, this is kind of weird.
-    # TODO: Eventually make use DatabaseConfiguration as keys, but they aren't hashable.
-    sources = collections.defaultdict(dict)
-    for name, (configuration, stat) in groups.items():
-        sources[configuration.database.connection.dsn][name] = (configuration, stat)
-    return sources
+def configure_set(cluster, cursor, name, configuration, previous_configuration=None):
+    """
+    Configures a replication set using the provided name and configuration data.
+    """
+    logger.info('Configuring replication set on %s...', cursor.connection.dsn)
+
+    # Create the transaction queue if it doesn't already exist.
+    logger.info('Creating transaction queue (if it does not already exist)...')
+    cursor.execute("SELECT pgq.create_queue(%s)", (cluster.get_queue_name(name),))
+
+    setup_triggers(cluster, cursor, name, configuration)
+
+    if previous_configuration is not None:
+        current_tables = set((t.schema, t.name) for t in previous_configuration.tables)
+        updated_tables = set((t.schema, t.name) for t in configuration.tables)
+        dropped_tables = current_tables - updated_tables
+
+        for schema, table in dropped_tables:
+            drop_trigger(cluster, cursor, name, schema, table)
 
 
-# TODO: Add a version check to ensure previous versions (local "latest"
-# versions) avoid overwriting newer versions (global "latest" versions.)
+def unconfigure_set(cluster, cursor, name, configuration):
+    """
+    Removes all triggers and log queue for the provided replication set.
+    """
+    logger.info('Unconfiguring replication set on %s...', cursor.connection.dsn)
 
-def upgrade_triggers(application, names=()):
-    zookeeper = application.environment.zookeeper
+    # Drop the transaction queue if it exists.
+    logger.info('Dropping transaction queue...')
+    cursor.execute("SELECT pgq.drop_queue(%s)", (cluster.get_queue_name(name),))
 
-    # If no specific names are provided, run the upgrade on all groups.
-    if not names:
-        names = zookeeper.get_children(application.get_group_path())
+    for table in configuration.tables:
+        drop_trigger(cluster, cursor, name, table.schema, table.name)
 
-    groups = dict(fetch_groups(application, names))
+
+# Cluster Management
+
+def initialize_cluster(cluster):
+    """
+    Initialize a pgshovel cluster in ZooKeeper.
+    """
+    logger.info('Creating a new cluster for %s...', cluster)
+
+    configuration = ClusterConfiguration(version=__version__)
+    ztransaction = cluster.environment.zookeeper.transaction()
+    ztransaction.create(cluster.path, BinaryCodec(ClusterConfiguration).encode(configuration))
+    ztransaction.create(cluster.get_set_path())
+    commit(ztransaction)
+
+
+def upgrade_cluster(cluster, force=False):
+    zookeeper = cluster.environment.zookeeper
+
+    codec = BinaryCodec(ClusterConfiguration)
+    data, stat = zookeeper.get(cluster.path)
+    configuration = codec.decode(data)
+
+    # if the configuration is newer or equal, require manual intervention
+    assert parse_version(__version__) >= parse_version(configuration.version) or force, 'cannot downgrade %s to %s' % (configuration.version, __version__)
+
+    logger.info('Upgrading cluster from %s to %s...', configuration.version, __version__)
+    configuration.version = __version__
 
     ztransaction = zookeeper.transaction()
-    transactions = []
+    ztransaction.set_data(cluster.path, codec.encode(configuration), version=stat.version)
 
-    for dsn, groups in collect_groups_by_database(groups).items():
-        connection = psycopg2.connect(dsn)
-        transactions.append(Transaction(connection, 'upgrade-triggers'))
+    # collect databases
+    databases = set()
+    for s, (configuration, stat) in fetch_sets(cluster):
+        for database in configuration.databases:
+            databases.add(database.dsn)
+
+        # TODO: not entirely sure that this is necessary, but can't hurt
+        ztransaction.check(cluster.get_set_path(s), version=stat.version)
+
+    transactions = []
+    # get_managed_databases prevents duplicates, so this is safe to perform
+    # without doing any advisory locking (although it will error if two sets
+    # refer to the same database using different DSNs.) get_managed_databases
+    # should provide some capacity for doing deduplication to make this more
+    # convenient, probably, but this at least keeps it from inadvertently
+    # breaking for now.
+    for connection in get_managed_databases(cluster, databases, configure=False, same_version=False).values():
+        transaction = Transaction(connection, 'update-cluster')
+        transactions.append(transaction)
         with connection.cursor() as cursor:
-            for name, (configuration, stat) in groups.items():
-                setup_triggers(application, cursor, name, configuration)
-                ztransaction.check(application.get_group_path(name), stat.version)
+            setup_database(cluster, cursor)
 
     with managed(transactions):
         commit(ztransaction)
 
 
-@contextmanager
-def noop():
-    yield
+# Replication Set Management
+
+def create_set(cluster, name, configuration):
+    # TODO: add dry run support
+
+    validate_set_configuration(configuration)
+
+    databases = get_managed_databases(cluster, [d.dsn for d in configuration.databases])
+
+    ztransaction = check_version(cluster)
+
+    transactions = []
+    for connection in databases.values():
+        transaction = Transaction(connection, 'create-set:%s' % (name,))
+        transactions.append(transaction)
+
+        with connection.cursor() as cursor:
+            configure_set(cluster, cursor, name, configuration)
+
+    ztransaction.create(
+        cluster.get_set_path(name),
+        BinaryCodec(ReplicationSetConfiguration).encode(configuration),
+    )
+
+    with managed(transactions):
+        commit(ztransaction)
 
 
-def move_groups(application, names, database, force=False):
-    """
-    Moves a collection of groups (provided by name) to the database
-    configuration provided.
-    """
-    assert names, 'at least one group must be provided'
+def update_set(cluster, name, updated_configuration, allow_forced_removal=False):
+    # TODO: add dry run support
 
-    original = dict(fetch_groups(application, names))
+    validate_set_configuration(updated_configuration)
+
+    (name, (current_configuration, stat)) = fetch_sets(cluster, (name,))[0]
+
+    # TODO: It probably makes sense to normalize the database URIs here.
+    current_databases = set(d.dsn for d in current_configuration.databases)
+    updated_databases = set(d.dsn for d in updated_configuration.databases)
+
+    additions = get_managed_databases(cluster, updated_databases - current_databases)
+    mutations = get_managed_databases(cluster, updated_databases & current_databases)
+
+    deletions = get_managed_databases(
+        cluster,
+        current_databases - updated_databases,
+        skip_inaccessible=allow_forced_removal,
+    )
+
+    # ensure no items show up multiple times, since that causes incorrect behavior
+    # TODO: this is a very naive approach to avoid shooting ourselves in the
+    # foot and could be improved for valid cases (updating a dsn for an
+    # existing set should be treated as a mutation, not an addition and
+    # deletion) but this would require a more intelligent implementation
+    occurrences = collections.Counter()
+    for nodes in map(operator.methodcaller('keys'), (additions, mutations, deletions)):
+        occurrences.update(nodes)
+
+    duplicates = list(itertools.takewhile(lambda (node, count): count > 1, occurrences.most_common()))
+    assert not duplicates, 'found duplicates: %s' % (duplicates,)
+
+    ztransaction = check_version(cluster)
 
     transactions = []
 
-    # TODO: Rather than make this totally skip removal, it probably makes sense
-    # to allow a "best effort" cleanup that doesn't fail the task if the
-    # database can't be accessed.
-    if not force:
-        # Remove all of the triggers from the previous database.
-        # TODO: Figure out how this behavior works with consumers that are already
-        # connected -- this should fail, as it is today.
-        for dsn, groups in collect_groups_by_database(original).items():
-            source_connection = psycopg2.connect(dsn)
-            transactions.append(Transaction(source_connection, 'move-groups:source'))
-            with source_connection.cursor() as cursor:
-                for name, (configuration, stat) in groups.items():
-                    unconfigure_group(application, cursor, name, configuration)
+    for connection in additions.values():
+        transaction = Transaction(connection, 'update-set:create:%s' % (name,))
+        transactions.append(transaction)
+        with connection.cursor() as cursor:
+            configure_set(cluster, cursor, name, updated_configuration, None)
 
-    updated = {}
-    for name, (configuration, stat) in original.items():
-        c = GroupConfiguration()
-        c.CopyFrom(configuration)
-        c.database.CopyFrom(database)
-        updated[name] = (c, stat)
+    for connection in mutations.values():
+        transaction = Transaction(connection, 'update-set:update:%s' % (name,))
+        transactions.append(transaction)
+        with connection.cursor() as cursor:
+            configure_set(cluster, cursor, name, updated_configuration, current_configuration)
 
-    # Add the triggers to the destination.
-    destination_connection = get_connection_for_database(database)
-    transactions.append(Transaction(destination_connection, 'move-groups:destination'))
-    with destination_connection.cursor() as cursor:
-        configure_database(application, cursor)
-        for name, (configuration, stat) in updated.items():
-            configure_group(application, cursor, name, configuration)
+    # TODO: add help to inform user of the possiblity of retry
+    for connection in deletions.values():
+        transaction = Transaction(connection, 'update-set:delete:%s' % (name,))
+        transactions.append(transaction)
+        with connection.cursor() as cursor:
+            unconfigure_set(cluster, cursor, name, current_configuration)
+
+    ztransaction.set_data(
+        cluster.get_set_path(name),
+        BinaryCodec(ReplicationSetConfiguration).encode(updated_configuration),
+        version=stat.version,
+    )
 
     with managed(transactions):
-        ztransaction = application.environment.zookeeper.transaction()
-        for name, (configuration, stat) in updated.items():
-            ztransaction.set_data(
-                application.get_group_path(name),
-                BinaryCodec(GroupConfiguration).encode(configuration),
-                version=stat.version,
-            )
         commit(ztransaction)
 
 
-def drop_groups(application, names, force=False):
-    assert names, 'at least one group must be provided'
+def drop_set(cluster, name, allow_forced_removal=False):
+    # TODO: add dry run support
 
-    results = dict(fetch_groups(application, names))
+    (name, (configuration, stat)) = fetch_sets(cluster, (name,))[0]
 
-    if not force:
-        transactions = []
-        for dsn, groups in collect_groups_by_database(results).items():
-            connection = psycopg2.connect(dsn)
-            transactions.append(Transaction(connection, 'drop-groups'))
-            with connection.cursor() as cursor:
-                for name, (configuration, stat) in groups.items():
-                    unconfigure_group(application, cursor, name, configuration)
-        manager = managed(transactions)
-    else:
-        manager = noop()
+    deletions = get_managed_databases(
+        cluster,
+        [d.dsn for d in configuration.databases],
+        configure=False,
+        skip_inaccessible=allow_forced_removal,
+    )
 
-    with manager:
-        ztransaction = application.environment.zookeeper.transaction()
-        for name, (configuration, stat) in results.iteritems():
-            ztransaction.delete(
-                application.get_group_path(name),
-                version=stat.version,
-            )
+    ztransaction = check_version(cluster)
+
+    transactions = []
+
+    # TODO: add help to inform user of the possiblity of retry
+    for connection in deletions.values():
+        transaction = Transaction(connection, 'drop-set:%s' % (name,))
+        transactions.append(transaction)
+        with connection.cursor() as cursor:
+            unconfigure_set(cluster, cursor, name, configuration)
+
+    ztransaction.delete(
+        cluster.get_set_path(name),
+        version=stat.version,
+    )
+
+    with managed(transactions):
         commit(ztransaction)

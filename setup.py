@@ -29,29 +29,28 @@ class PyTest(test):
 
 setup(
     name='pgshovel',
-    version='0.1.1',
+    version='0.2.0-dev',
+    setup_requires=(
+        'setuptools>=8.0',
+    ),
     install_requires=(
-        'CloseableQueue',
-        'cached-property',
-        'futures',
-        'kazoo',
-        'protobuf',
-        'psycopg2',
-        'tabulate',
+        'futures~=2.2',
+        'kazoo~=2.0',
+        'protobuf~=2.6',
+        'psycopg2~=2.6',
+        'tabulate~=0.7',
     ),
     entry_points={
         'console_scripts': [
-            'pgshovel-consumer = pgshovel.cli:consumer',
-            'pgshovel-create-group = pgshovel.cli:create_group',
-            'pgshovel-drop-groups = pgshovel.cli:drop_groups',
+            'pgshovel-create-set = pgshovel.cli:create_set',
+            'pgshovel-drop-set = pgshovel.cli:drop_set',
             'pgshovel-initialize-cluster = pgshovel.cli:initialize_cluster',
-            'pgshovel-inspect-group = pgshovel.cli:inspect_group',
-            'pgshovel-list-groups = pgshovel.cli:list_groups',
-            'pgshovel-move-groups = pgshovel.cli:move_groups',
+            'pgshovel-inspect-set = pgshovel.cli:inspect_set',
+            'pgshovel-list-sets = pgshovel.cli:list_sets',
+            'pgshovel-relay = pgshovel.cli:relay',
             'pgshovel-shell = pgshovel.cli:shell',
-            'pgshovel-snapshot = pgshovel.cli:snapshot',
-            'pgshovel-update-group = pgshovel.cli:update_group',
-            'pgshovel-upgrade-triggers = pgshovel.cli:upgrade_triggers',
+            'pgshovel-update-set = pgshovel.cli:update_set',
+            'pgshovel-upgrade-cluster = pgshovel.cli:upgrade_cluster',
         ],
     },
     include_package_data=True,
@@ -67,9 +66,6 @@ setup(
         'pytest',
     ),
     extras_require={
-        'lmdb': (
-            'lmdb',
-        ),
         'sentry': (
             'raven',
         ),
