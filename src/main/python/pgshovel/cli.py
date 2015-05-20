@@ -34,14 +34,13 @@ def shell(options, cluster):
     with cluster:
         exports = {
             'cluster': cluster,
-            'environment': cluster.environment,
         }
         return code.interact(local=exports)
 
 
 @command(description="Initializes a new cluster in ZooKeeper.")
 def initialize_cluster(options, cluster):
-    with cluster.environment:
+    with cluster:
         return administration.initialize_cluster(cluster)
 
 
@@ -51,7 +50,7 @@ def initialize_cluster(options, cluster):
     )
 )
 def upgrade_cluster(options, cluster):
-    with cluster.environment:
+    with cluster:
         return administration.upgrade_cluster(cluster, force=options.force)
 
 
@@ -86,7 +85,7 @@ def create_set(options, cluster, name, path='/dev/stdin'):
 @command(description="Provides details about a replication set.")
 def inspect_set(options, cluster, name):
     with cluster:
-        data, stat = cluster.environment.zookeeper.get(cluster.get_set_path(name))
+        data, stat = cluster.zookeeper.get(cluster.get_set_path(name))
         configuration = BinaryCodec(ReplicationSetConfiguration).decode(data)
         sys.stdout.write(__get_codec(options, ReplicationSetConfiguration).encode(configuration))
         sys.stderr.write(administration.get_version(configuration) + '\n')

@@ -16,10 +16,7 @@ from datetime import timedelta
 
 from tabulate import tabulate
 
-from pgshovel.cluster import (
-    Cluster,
-    Environment,
-)
+from pgshovel.cluster import Cluster
 from pgshovel.utilities.templates import (
     resource_filename,
     resource_stream,
@@ -102,11 +99,7 @@ def command(function=None, *args, **kwargs):
                 logging.config.fileConfig(logging_configuration)
 
             try:
-                environment = Environment(configuration.get('zookeeper', 'hosts'))
-                cluster = Cluster(
-                    options.cluster,
-                    environment,
-                )
+                cluster = Cluster(options.cluster, configuration)
 
                 try:
                     return function(options, cluster, *arguments)

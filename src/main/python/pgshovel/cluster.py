@@ -22,7 +22,7 @@ class VersionMismatchError(Exception):
 
 
 def check_version(cluster):
-    zookeeper = cluster.environment.zookeeper
+    zookeeper = cluster.zookeeper
 
     logger.debug('Checking cluster version...')
     data, stat = zookeeper.get(cluster.path)
@@ -37,29 +37,12 @@ def check_version(cluster):
     return ztransaction
 
 
-class Environment(object):
-    def __init__(self, zookeeper_hosts):
-        # TODO: Needs timeout.
-        self.zookeeper = KazooClient(zookeeper_hosts)
-
-    def __enter__(self):
-        self.start()
-
-    def __exit__(self, type, value, traceback):
-        self.stop()
-
-    def stop(self):
-        self.zookeeper.stop()
-
-    def start(self):
-        # TODO: Needs timeout
-        self.zookeeper.start()
-
-
 class Cluster(object):
-    def __init__(self, name, environment):
+    def __init__(self, name, configuration):
         self.name = name
-        self.environment = environment
+        self.configuration = configuration
+
+        self.zookeeper = KazooClient(configuration.get('zookeeper', 'hosts'))
 
     def __enter__(self):
         self.start()
@@ -79,10 +62,11 @@ class Cluster(object):
         return 'pgshovel_%s' % (self.name,)
 
     def start(self):
-        self.environment.start()
+        # TODO: Needs timeout
+        self.zookeeper.start()
 
     def stop(self):
-        self.environment.stop()
+        self.zookeeper.stop()
 
     def get_trigger_name(self, set):
         return 'pgshovel_%s_%s_log' % (self.name, set)

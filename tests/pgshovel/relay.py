@@ -1,6 +1,7 @@
 import os
 import signal
 import uuid
+from ConfigParser import SafeConfigParser
 from Queue import Queue
 from contextlib import (
     closing,
@@ -14,10 +15,7 @@ from pgshovel.administration import (
     create_set,
     initialize_cluster,
 )
-from pgshovel.cluster import (
-    Cluster,
-    Environment,
-)
+from pgshovel.cluster import Cluster
 from pgshovel.interfaces.configurations_pb2 import ReplicationSetConfiguration
 from pgshovel.relay import (
     Relay,
@@ -47,9 +45,15 @@ def zookeeper():
 
 @pytest.yield_fixture
 def cluster(zookeeper):
-    environment = Environment('%s:%s' % (zookeeper.host, zookeeper.port))
-    with environment:
-        cluster = Cluster('test_%s' % (uuid.uuid1().hex,), environment)
+    configuration = SafeConfigParser()
+    configuration.add_section('zookeeper')
+    configuration.set('zookeeper', 'hosts', '%s:%s' % (zookeeper.host, zookeeper.port))
+    cluster = Cluster(
+        'test_%s' % (uuid.uuid1().hex,),
+        configuration,
+    )
+
+    with cluster:
         initialize_cluster(cluster)
         yield cluster
 

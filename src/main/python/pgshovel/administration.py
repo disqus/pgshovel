@@ -148,7 +148,7 @@ def get_managed_databases(cluster, dsns, configure=True, skip_inaccessible=False
     if same_version:
         ztransaction = check_version(cluster)
     else:
-        ztransaction = cluster.environment.zookeeper.transaction()
+        ztransaction = cluster.zookeeper.transaction()
 
     lock_id = random.randint(-2**63, 2**63-1)  # bigint max/min
     logger.debug('Connecting to databases: %s', FormattedSequence(dsns))
@@ -285,14 +285,14 @@ class VersionedSet(collections.namedtuple('VersionedSet', 'name version')):
 
 def fetch_sets(cluster, names=None):
     if names is None:
-        names = cluster.environment.zookeeper.get_children(cluster.get_set_path())
+        names = cluster.zookeeper.get_children(cluster.get_set_path())
 
     sets = map(VersionedSet.expand, names)
     paths = map(
         cluster.get_set_path,
         map(operator.attrgetter('name'), sets),
     )
-    futures = map(cluster.environment.zookeeper.get_async, paths)
+    futures = map(cluster.zookeeper.get_async, paths)
 
     results = []
     decode = BinaryCodec(ReplicationSetConfiguration).decode
@@ -361,14 +361,14 @@ def initialize_cluster(cluster):
     logger.info('Creating a new cluster for %s...', cluster)
 
     configuration = ClusterConfiguration(version=__version__)
-    ztransaction = cluster.environment.zookeeper.transaction()
+    ztransaction = cluster.zookeeper.transaction()
     ztransaction.create(cluster.path, BinaryCodec(ClusterConfiguration).encode(configuration))
     ztransaction.create(cluster.get_set_path())
     commit(ztransaction)
 
 
 def upgrade_cluster(cluster, force=False):
-    zookeeper = cluster.environment.zookeeper
+    zookeeper = cluster.zookeeper
 
     codec = BinaryCodec(ClusterConfiguration)
     data, stat = zookeeper.get(cluster.path)

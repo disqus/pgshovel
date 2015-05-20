@@ -205,7 +205,7 @@ class Relay(threading.Thread):
                     logger.warning('Lost connection to ZooKeeper! Requesting exit...')
                     self.__stop_requested.set()
 
-            self.cluster.environment.zookeeper.add_listener(__handle_session_state_change)
+            self.cluster.zookeeper.add_listener(__handle_session_state_change)
 
             # XXX: This needs to be implemented, but right now there is a race
             # condition that can cause the relay to never exit if the watch is
@@ -225,7 +225,7 @@ class Relay(threading.Thread):
 
             # logger.debug('Checking cluster version...')
             # DataWatch(
-            #     self.cluster.environment.zookeeper,
+            #     self.cluster.zookeeper,
             #     self.cluster.path,
             #     __handle_cluster_version_change,
             # )
@@ -262,7 +262,7 @@ class Relay(threading.Thread):
 
             logger.debug('Fetching replication set configuration...')
             DataWatch(
-                self.cluster.environment.zookeeper,
+                self.cluster.zookeeper,
                 self.cluster.get_set_path(self.set),
                 __handle_state_change,
             )
