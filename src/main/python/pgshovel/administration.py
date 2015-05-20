@@ -11,8 +11,11 @@ from pkg_resources import parse_version
 from pgshovel import __version__
 from pgshovel.cluster import check_version
 from pgshovel.database import (
+    get_configuration_value,
     get_node_identifier,
     get_or_set_node_identifier,
+    set_configuration_value,
+    update_configuration_value,
 )
 from pgshovel.interfaces.configurations_pb2 import (
     ClusterConfiguration,
@@ -105,11 +108,11 @@ def setup_database(cluster, cursor):
     logger.info('Creating configuration table (if it does not already exist)...')
     create_configuration_table(cluster, cursor)
 
-    # TODO: Write version to configuration table too. This is important, since
-    # a database can have a previous version if the database was previously
-    # configured, removed from all sets, then the cluster was upgraded. If the
-    # database is added **back** to the cluster, it will still have the version
-    # it was originally configured with!
+    version = get_configuration_value(cluster, cursor, 'version')
+    if version is None:
+        set_configuration_value(cluster, cursor, 'version', __version__)
+    elif version is not None and str(version) != __version__:
+        update_configuration_value(cluster, cursor, 'version', __version__)
 
     # Ensure that this database has already had an identifier associated with it.
     logger.info('Checking for node ID...')
@@ -168,9 +171,6 @@ def get_managed_databases(cluster, dsns, configure=True, skip_inaccessible=False
         logger.debug('Checking if %s has been configured...', dsn)
         try:
             with connection.cursor() as cursor:
-                # TODO: Also fetch the version when that is written to the node
-                # configuration and assert that the database is up to date.
-                # (See comment in `setup_database`.)
                 node_id = get_node_identifier(cluster, cursor)
                 assert node_id is not None
         except psycopg2.ProgrammingError:
@@ -200,8 +200,21 @@ def get_managed_databases(cluster, dsns, configure=True, skip_inaccessible=False
 
                 node_id = setup_database(cluster, cursor)
         else:
-            logger.debug('%s is already configured as %s.', dsn, node_id)
-            connection.commit()
+            # Check to ensure that the remote database is configured using the
+            # same version as the local version. This is important since a
+            # previously configured database that has not been used for some
+            # time can still have an old version of the schema, log trigger,
+            # etc. Adding it back to the cluster without upgrading it can cause
+            # strange compatibility issues.
+            # TODO: It would make sense here to provide an easy upgrade path --
+            # right now, there is no direct path to upgrading a database that
+            # has no groups associated with it!
+            with connection.cursor() as cursor:
+                version = str(get_configuration_value(cluster, cursor, 'version'))
+                assert version == __version__, 'local and node versions do not match (local: %s, node: %s)' % (__version__, version)
+
+            logger.debug('%s is already configured as %s (version %s).', dsn, node_id, version)
+            connection.commit()  # don't leave idle in transaction
 
         assert node_id not in nodes, 'found duplicate node: %s and %s' % (connection, nodes[node_id])
         nodes[node_id] = connection
@@ -375,7 +388,7 @@ def upgrade_cluster(cluster, force=False):
     configuration = codec.decode(data)
 
     # if the configuration is newer or equal, require manual intervention
-    assert parse_version(__version__) >= parse_version(configuration.version) or force, 'cannot downgrade %s to %s' % (configuration.version, __version__)
+    assert parse_version(__version__) > parse_version(configuration.version) or force, 'cannot downgrade %s to %s' % (configuration.version, __version__)
 
     logger.info('Upgrading cluster from %s to %s...', configuration.version, __version__)
     configuration.version = __version__

@@ -14,6 +14,7 @@ from pgshovel.administration import (
     drop_set,
     initialize_cluster,
     update_set,
+    upgrade_cluster,
 )
 from pgshovel.cluster import Cluster
 from pgshovel.interfaces.configurations_pb2 import ReplicationSetConfiguration
@@ -115,6 +116,8 @@ def test_workflows(zookeeper):
                 columns=['id', 'user_id', 'display_name']
             )
             update_set(cluster, 'example', replication_set)
+
+            upgrade_cluster(cluster, force=True)
 
             del replication_set.tables[0]
             del replication_set.databases[0]

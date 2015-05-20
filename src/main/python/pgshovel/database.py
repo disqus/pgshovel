@@ -27,6 +27,11 @@ def set_configuration_value(cluster, cursor, key, value):
     cursor.execute(statement, (key, value))
 
 
+def update_configuration_value(cluster, cursor, key, value):
+    statement = 'UPDATE {schema}.configuration SET value = %s WHERE key = %s'.format(schema=quote(cluster.schema))
+    cursor.execute(statement, (value, key))
+
+
 NODE_ID_KEY = 'node_id'
 
 def get_node_identifier(cluster, cursor):
