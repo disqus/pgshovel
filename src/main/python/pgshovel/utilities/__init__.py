@@ -20,7 +20,7 @@ def import_extras(name):
         s = sys.stderr
         print >> s, '*' * 80
         print >> s, ''
-        print >> s, 'This package requires that %r extras are installed.' % (name,)
+        print >> s, 'This module requires that %r extras are installed.' % (name,)
         print >> s, ''
         print >> s, 'To install the necessary requirements, use:'
         print >> s, ''
