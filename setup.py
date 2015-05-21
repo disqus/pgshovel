@@ -66,6 +66,9 @@ setup(
         'pytest',
     ),
     extras_require={
+        'msgpack': (
+            'msgpack-python~=0.4',
+        ),
         'sentry': (
             'raven',
         ),

@@ -14,6 +14,10 @@ from kazoo.recipe.watchers import DataWatch
 
 from pgshovel import __version__
 from pgshovel.database import ManagedDatabase
+from pgshovel.events import (
+    MutationBatch,
+    MutationEvent,
+)
 from pgshovel.interfaces.configurations_pb2 import (
     ClusterConfiguration,
     ReplicationSetConfiguration,
@@ -22,32 +26,6 @@ from pgshovel.utilities.protobuf import BinaryCodec
 
 
 logger = logging.getLogger(__name__)
-
-
-class MutationEvent(object):
-    def __init__(self, id, schema, table, operation, states, transaction_id, timestamp):
-        self.id = id
-        self.schema = schema
-        self.table = table
-        self.operation = operation
-        self.states = states
-        self.transaction_id = transaction_id
-        self.timestamp = timestamp
-
-    def __str__(self):
-        return '%s: %s (%d) at %.2f to %s.%s' % (self.id, self.operation, self.transaction_id, self.timestamp, self.schema, self.table)
-
-
-class MutationBatch(object):
-    def __init__(self, id, start_txid, end_txid, node):
-        self.id = id
-        self.start_txid = start_txid
-        self.end_txid = end_txid
-        self.node = node
-        self.events = []
-
-    def __str__(self):
-        return '%s (%s events from %s to %s on %s)' % (self.id, len(self.events), self.start_txid, self.end_txid, self.node)
 
 
 def deserialize_event((id, payload, timestamp, txid)):
