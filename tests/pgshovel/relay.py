@@ -21,88 +21,29 @@ from pgshovel.relay import (
     Relay,
     Worker,
 )
-from services import (
-    Postgres,
-    ZooKeeper,
-    get_open_port,
+from tests.pgshovel.fixtures import (
+    create_temporary_database,
+    postgres,
+    zookeeper,
 )
 
-@pytest.yield_fixture(scope='module')
-def zookeeper():
-    server = ZooKeeper(
-        os.environ['ZOOKEEPER_PATH'],
-        host='localhost',
-        port=get_open_port(),
-    )
-    server.setup()
-    server.start()
-    try:
-        yield server
-    finally:
-        server.stop()
-        server.teardown()
+
+zookeeper = pytest.yield_fixture(scope='module')(zookeeper)
+postgres = contextmanager(postgres)
 
 
 @pytest.yield_fixture
 def cluster(zookeeper):
+    zookeeper_server, _ = zookeeper
+
     configuration = SafeConfigParser()
     configuration.add_section('zookeeper')
-    configuration.set('zookeeper', 'hosts', '%s:%s' % (zookeeper.host, zookeeper.port))
-    cluster = Cluster(
-        'test_%s' % (uuid.uuid1().hex,),
-        configuration,
-    )
+    configuration.set('zookeeper', 'hosts', '%s:%s' % (zookeeper_server.host, zookeeper_server.port))
+    cluster = Cluster('test_%s' % (uuid.uuid1().hex,),configuration,)
 
     with cluster:
         initialize_cluster(cluster)
         yield cluster
-
-
-@contextmanager
-def database(setup=lambda database: None):
-    server = Postgres(
-        os.environ['POSTGRES_PATH'],
-        host='localhost',
-        port=get_open_port(),
-        max_prepared_transactions=10,  # XXX
-    )
-    server.setup()
-    server.start()
-    try:
-        setup(server)
-        yield server
-    finally:
-        server.stop()
-        server.teardown()
-
-
-def setup_database(name, schema):
-    def setup(database):
-        base = 'postgresql://%s:%s' % (database.host, database.port)
-        with closing(psycopg2.connect(base + '/postgres')) as connection, \
-                connection.cursor() as cursor:
-            connection.autocommit = True
-            cursor.execute('CREATE DATABASE %s' % (name,))
-
-        dsn = base + '/' + name
-        with closing(psycopg2.connect(dsn)) as connection, \
-                connection.cursor() as cursor:
-            cursor.execute(schema)
-            connection.commit()
-    return setup
-
-
-schema = """\
-CREATE TABLE auth_user (
-    id bigserial PRIMARY KEY NOT NULL,
-    username varchar(250) NOT NULL
-);
-CREATE TABLE accounts_userprofile (
-    id bigserial PRIMARY KEY NOT NULL,
-    user_id bigint REFERENCES "auth_user" ("id"),
-    display_name varchar(250)
-);
-"""
 
 
 def setup_cluster(cluster, dsns):
@@ -134,9 +75,7 @@ class QueueHandler(object):
 
 
 def test_worker(cluster):
-    name = 'test_%s' % (uuid.uuid1().hex,)
-    with database(setup_database(name, schema)) as primary:
-        dsn = 'postgresql://%s:%s/%s' % (primary.host, primary.port, name)
+    with postgres(create_temporary_database) as (_, dsn):
         setup_cluster(cluster, (dsn,))
 
         queue = Queue()
@@ -162,23 +101,22 @@ def test_worker(cluster):
 
 
 def test_relay(zookeeper, cluster):
-    name = 'test_%s' % (uuid.uuid1().hex,)
-    with database(setup_database(name, schema)) as primary, database(setup_database(name, schema)) as secondary:
-        databases = ['postgresql://%s:%s/%s' % (s.host, s.port, name) for s in (primary, secondary)]
-        setup_cluster(cluster, databases)
+    with postgres(create_temporary_database) as (primary_database, primary_dsn), \
+            postgres(create_temporary_database) as (_, secondary_dsn):
+        setup_cluster(cluster, (primary_dsn, secondary_dsn))
 
         queue = Queue()
         relay = Relay(cluster, 'example', 'consumer', QueueHandler(queue), throttle=0.1)
         relay.start()
 
-        for dsn in databases:
+        for dsn in (primary_dsn, secondary_dsn):
             with closing(psycopg2.connect(dsn)) as connection, connection.cursor() as cursor:
                 cursor.execute('INSERT INTO auth_user (username) VALUES (%s)', ('example',))
                 connection.commit()
                 force_tick(connection, cluster.get_queue_name('example'))
 
         batches = []
-        for _ in xrange(len(databases)):
+        for _ in (primary_dsn, secondary_dsn):
             batches.append(queue.get(True, 1))
 
         for batch in batches:
@@ -191,11 +129,11 @@ def test_relay(zookeeper, cluster):
             })
 
         # ensure the connection recovers after being killed
-        with closing(psycopg2.connect(databases[0])) as connection, connection.cursor() as cursor:
+        with closing(psycopg2.connect(primary_dsn)) as connection, connection.cursor() as cursor:
             connection.autocommit = True
             cursor.execute('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid != pg_backend_pid()')
 
-        with closing(psycopg2.connect(databases[0])) as connection, connection.cursor() as cursor:
+        with closing(psycopg2.connect(primary_dsn)) as connection, connection.cursor() as cursor:
             cursor.execute('INSERT INTO auth_user (username) VALUES (%s)', ('example',))
             connection.commit()
             force_tick(connection, cluster.get_queue_name('example'))
@@ -210,14 +148,14 @@ def test_relay(zookeeper, cluster):
         })
 
         # XXX: (don't try this at home, need to refactor services to expose pid directly)
-        with open(os.path.join(primary.tmp_dir, 'postmaster.pid')) as f:
+        with open(os.path.join(primary_database.tmp_dir, 'postmaster.pid')) as f:
             os.kill(int(f.readline()), signal.SIGINT)
 
         with pytest.raises(psycopg2.OperationalError):
-            psycopg2.connect(databases[0])
+            psycopg2.connect(primary_dsn)
 
         # ensure that the second database is still operational
-        with closing(psycopg2.connect(databases[1])) as connection, connection.cursor() as cursor:
+        with closing(psycopg2.connect(secondary_dsn)) as connection, connection.cursor() as cursor:
             cursor.execute('INSERT INTO auth_user (username) VALUES (%s)', ('example',))
             connection.commit()
             force_tick(connection, cluster.get_queue_name('example'))
@@ -238,8 +176,10 @@ def test_relay(zookeeper, cluster):
         relay = Relay(cluster, 'example', 'consumer', QueueHandler(queue), throttle=0.1)
         relay.start()
 
-        zookeeper.stop()
+        zookeeper_server, _ = zookeeper
+
+        zookeeper_server.stop()
         relay.result(10)
 
         # XXX: have to restart for services rn, need to fix
-        zookeeper.start()
+        zookeeper_server.start()
