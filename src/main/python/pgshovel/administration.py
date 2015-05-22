@@ -1,3 +1,4 @@
+import cPickle as pickle
 import collections
 import hashlib
 import itertools
@@ -239,7 +240,7 @@ def setup_triggers(cluster, cursor, name, configuration):
             CREATE TRIGGER {name}
             AFTER INSERT OR UPDATE OF {columns} OR DELETE
             ON {schema}.{table}
-            FOR EACH ROW EXECUTE PROCEDURE {cluster_schema}.log(%s, %s)
+            FOR EACH ROW EXECUTE PROCEDURE {cluster_schema}.log(%s, %s, %s)
         """.format(
             name=quote(trigger),
             columns=', '.join(map(quote, columns)),
@@ -256,6 +257,7 @@ def setup_triggers(cluster, cursor, name, configuration):
 
         cursor.execute(statement, (
             cluster.get_queue_name(name),
+            pickle.dumps(frozenset(columns)),
             get_version(configuration)),
         )
 

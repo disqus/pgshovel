@@ -1,17 +1,35 @@
-serialize = SD.get('serialize')
-if not serialize:
-    serialize = SD['serialize'] = __import__('cPickle').dumps
+def __initialize__(SD):
+    """
+    Prepares the execution environment.
+    """
+    if not SD.get('__initialized__'):
+        import pickle
 
-statements = SD.get('statements')
-if not statements:
-    statements = SD['statements'] = {
-        'enqueue': plpy.prepare('SELECT pgq.insert_event($1, $2, $3)', ["text", "text", "text"]),
-    }
+        def create_state_filter(columns_encoded):
+            columns = pickle.loads(columns_encoded)
+            def filter_state(state):
+                if not state:
+                    return state
+                return dict(item for item in state.items() if item[0] in columns)
+            return filter_state
 
-(queue, configuration_version) = TD['args']
-plpy.execute(statements['enqueue'], (queue, 'operation', '0:%s' % serialize((
+        SD.update({
+            '__initialized__': True,
+            'enqueue_statement': plpy.prepare('SELECT pgq.insert_event($1, $2, $3)', ["text", "text", "text"]),
+            'pickle': pickle,
+            'create_state_filter': create_state_filter,
+        })
+
+    # add all of our cached data into the interpreter environment
+    globals().update(SD)
+
+__initialize__(SD)
+
+
+queue, columns_encoded, configuration_version = TD['args']
+plpy.execute(enqueue_statement, (queue, 'operation', '0:%s' % pickle.dumps((
     (TD['table_schema'], TD['table_name']),
     TD['event'],
-    (TD['old'], TD['new']),
+    map(create_state_filter(columns_encoded), (TD['old'], TD['new'])),
     configuration_version
 ))))
