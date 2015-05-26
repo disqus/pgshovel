@@ -29,11 +29,11 @@ check:
 	pyflakes $$(find $(PYTHON_OUT) $(TESTS_FOLDER) -name \*.py -not -name \*_pb2.py)
 
 test: develop
-	POSTGRES_PATH=vendor/postgres ZOOKEEPER_PATH=vendor/zookeeper py.test $(TESTS_FOLDER)
+	KAFKA_PATH=vendor/kafka POSTGRES_PATH=vendor/postgres ZOOKEEPER_PATH=vendor/zookeeper py.test $(TESTS_FOLDER)
 
 test-xunit: clean develop
 	coverage erase
-	POSTGRES_PATH=vendor/postgres ZOOKEEPER_PATH=vendor/zookeeper py.test --junitxml=$(XUNIT_FILE) --cov pgshovel --cov $(TESTS_FOLDER) --cov-report=xml $(TESTS_FOLDER)
+	KAFKA_PATH=vendor/kafka POSTGRES_PATH=vendor/postgres ZOOKEEPER_PATH=vendor/zookeeper py.test --junitxml=$(XUNIT_FILE) --cov pgshovel --cov $(TESTS_FOLDER) --cov-report=xml $(TESTS_FOLDER)
 	mv coverage.xml $(COVERAGE_FILE)
 
 deb:

@@ -151,16 +151,9 @@ class ServiceRunner(object):
 
     def subprocess(self, args, env, on_error):
         try:
-            subprocess.check_call(
-                args,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
+            subprocess.check_call(args, env=env)
         except subprocess.CalledProcessError:
             self.logger.info(on_error)
-            self.logger.info(proc.stdout.read())
-            self.logger.info(proc.stderr.read())
             raise RuntimeError(on_error)
 
     @abc.abstractmethod
@@ -232,19 +225,17 @@ class ZooKeeper(ServiceRunner):
 
 class Kafka(ServiceRunner):
 
-    def __init__(self, root, host, port, broker_id, zk_host, zk_port, zk_chroot=None, replicas=1, partitions=2):
+    def __init__(self, root, host, port, configuration=None):
         super(Kafka, self).__init__(root, host, port)
 
-        if zk_chroot is None:
-            zk_chroot = 'kafka_' + str(uuid.uuid4())
+        self.configuration = {
+            'broker.id': 1,
+            'host.name': host,
+            'port': port,
+        }
 
-        self.zk_host = zk_host
-        self.zk_port = zk_port
-        self.zk_chroot = zk_chroot
-
-        self.broker_id = broker_id
-        self.replicas = replicas
-        self.partitions = partitions
+        if configuration is not None:
+            self.configuration.update(configuration)
 
         self.running = False
 
@@ -255,21 +246,15 @@ class Kafka(ServiceRunner):
         os.mkdir(os.path.join(self.tmp_dir, 'logs'))
         os.mkdir(os.path.join(self.tmp_dir, 'data'))
 
+        # XXX
+        if 'log.dirs' not in self.configuration:
+            self.configuration['log.dirs'] = os.path.join(self.tmp_dir, 'data')
+
         # Generate configs
-        self.template = os.path.join(self.root_path, 'config', 'kafka.properties.template')
         self.properties_file = os.path.join(self.tmp_dir, 'kafka.properties')
-        bindings = {
-            'broker_id': self.broker_id,
-            'host': self.host,
-            'port': self.port,
-            'tmp_dir': self.tmp_dir,
-            'partitions': self.partitions,
-            'replicas': self.replicas,
-            'zk_host': self.zk_host,
-            'zk_port': self.zk_port,
-            'zk_chroot': self.zk_chroot
-        }
-        write_template(self.template, self.properties_file, bindings)
+        with open(self.properties_file, 'w') as f:
+            for key, value in self.configuration.items():
+                f.write('%s=%s\n' % (key, value))
 
     def __run_class_args(self, *args):
         result = [os.path.join(self.root_path, 'bin', 'kafka-run-class.sh')]
@@ -283,34 +268,9 @@ class Kafka(ServiceRunner):
         return env
 
     def __repr__(self):
-        parts = {
-            'host': self.host,
-            'port': self.port,
-            'broker_id': self.broker_id,
-            'zk_host': self.zk_host,
-            'zk_port': self.zk_port,
-            'zk_chroot': self.zk_chroot,
-            'replicas': self.replicas,
-            'partitions': self.partitions,
-            'tmp_dir': self.tmp_dir,
-        }
-        return 'Kafka(%s)' % ', '.join('%s=%s' for (k,v) in parts.items())
-
+        return '<Kafka: %r>' % (self.tmp_dir,)
 
     def start(self):
-        args = self.__run_class_args(
-            'org.apache.zookeeper.ZooKeeperMain',
-            '-server',
-            '%s:%d' % (self.zk_host, self.zk_port),
-            'create',
-            '/%s' % self.zk_chroot,
-            'kafka-python'
-        )
-        env = self.__run_class_env()
-
-        with self.logger.executed('Creating ZooKeeper chroot node'):
-            self.subprocess(args, env, 'Failed to create ZooKeeper chroot node')
-
         self.child = ManagedProcess(
             'Kafka',
             args=self.__run_class_args('kafka.Kafka', self.properties_file),
@@ -319,7 +279,8 @@ class Kafka(ServiceRunner):
 
         with self.logger.executed('Starting'):
             self.child.start()
-            self.child.wait_for('[Kafka Server %d], started' % self.broker_id)
+            # TODO: regex instead
+            self.child.wait_for('[Kafka Server %d], started' % self.configuration['broker.id'])
             self.running = True
 
     def stop(self):

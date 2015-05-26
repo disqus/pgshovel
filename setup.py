@@ -69,6 +69,9 @@ setup(
         'msgpack': (
             'msgpack-python~=0.4',
         ),
+        'kafka': (
+            'kafka-python~=0.9',
+        ),
         'sentry': (
             'raven',
         ),

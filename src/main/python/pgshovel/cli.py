@@ -7,7 +7,8 @@ from datetime import timedelta
 
 from pgshovel import administration
 from pgshovel.interfaces.configurations_pb2 import ReplicationSetConfiguration
-from pgshovel.relay import Relay, StreamWriter
+from pgshovel.relay import Relay
+from pgshovel.utilities import load
 from pgshovel.utilities.commands import (
     FormatOption,
     Option,
@@ -137,8 +138,20 @@ def drop_set(options, cluster, name):
 
 
 @command
-def relay(options, cluster, set, consumer):
-    handler = StreamWriter(sys.stdout)
+def relay(options, cluster, consumer, set):
+    configuration = dict(
+        cluster.configuration.items(
+            'relay:%s' % (consumer,),
+            raw=False,
+            vars={
+                'consumer': consumer,
+                'set': set,
+            },
+        ),
+    )
+
+    cls = load(configuration.pop('handler', 'pgshovel.relay:StreamWriter'))
+    handler = cls.configure(configuration)
 
     with cluster:
         relay = Relay(cluster, set, consumer, handler)

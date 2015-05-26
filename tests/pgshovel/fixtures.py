@@ -5,6 +5,7 @@ from contextlib import closing
 import psycopg2
 
 from services import (
+    Kafka,
     Postgres,
     ZooKeeper,
     get_open_port,
@@ -56,6 +57,27 @@ def postgres(setup=noop):
     finally:
         server.stop()  # XXX: needs to be failure tolerant
         server.teardown()
+
+
+def kafka(zookeeper, broker_id=1, setup=noop):
+    # TODO: probably would make sense to chroot the zookeeper path
+    zookeeper_server, _ = zookeeper
+    broker = Kafka(
+        os.environ['KAFKA_PATH'],
+        host='localhost',
+        port=get_open_port(),
+        configuration={
+            'broker.id': broker_id,
+            'zookeeper.connect': '%s:%s' % (zookeeper_server.host, zookeeper_server.port),
+        },
+    )
+    broker.setup()
+    broker.start()
+    try:
+        yield broker, setup(broker)
+    finally:
+        broker.stop()  # XXX: needs to be failure tolerant
+        broker.teardown()
 
 
 def create_temporary_database(server, prefix='test', schema=DEFAULT_SCHEMA):

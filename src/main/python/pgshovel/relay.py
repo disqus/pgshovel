@@ -148,6 +148,15 @@ class StreamWriter(object):
                 self.stream.write('\n')
             self.stream.flush()
 
+    @classmethod
+    def configure(cls, configuration):
+        """
+        Configuration Parameters:
+
+        path: the path to the output file/stream
+        """
+        return cls(open(configuration.get('path', '/dev/stdout'), 'w'))
+
 
 RECOVERABLE_ERRORS = (psycopg2.OperationalError,)
 
@@ -173,7 +182,7 @@ class Relay(threading.Thread):
 
     def run(self):
         try:
-            logger.debug('Started relay.')
+            logger.debug('Started relay using %s.', self.handler)
 
             def __handle_session_state_change(state):
                 if state == KazooState.SUSPENDED:

@@ -66,7 +66,6 @@ $(KAFKA_FULL): $(ZOOKEEPER_FULL)
 kafka: $(KAFKA_FULL)
 	cd $(KAFKA_FULL) && ./gradlew jar
 	rm -f kafka && ln -fs $(KAFKA_FULL) kafka
-	cp templates/kafka.properties.template kafka/config/
 	cp templates/log4j.properties.template kafka/config/test-log4j.properties
 
 

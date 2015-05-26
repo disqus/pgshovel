@@ -86,7 +86,9 @@ def command(function=None, *args, **kwargs):
                 print pkg_resources.get_distribution("pgshovel").version
                 sys.exit(0)
 
-            configuration = SafeConfigParser()
+            configuration = SafeConfigParser(defaults={
+                'cluster': options.cluster,
+            })
             configuration.readfp(resource_stream('configuration/pgshovel.conf'))
             configuration.read((options.configuration_file,) if options.configuration_file is not None else CONFIGURATION_PATHS)
 
