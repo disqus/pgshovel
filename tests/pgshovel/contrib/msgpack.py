@@ -8,7 +8,7 @@ from pgshovel.events import (
 
 
 def test_codec():
-    event = MutationEvent(1, "public", "auth_user", "INSERT", (None, {"id": 1}), 1, 1)
+    event = MutationEvent(1, "public", "auth_user", "INSERT", ["id"], (None, {"id": 1}), 1, 1)
     batch = MutationBatch(1, 1, 2, uuid.uuid1(), [event])
     payload = codec.encode(batch)
     decoded = codec.decode(payload)

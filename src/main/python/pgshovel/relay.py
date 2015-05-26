@@ -32,8 +32,8 @@ def deserialize_event((id, payload, timestamp, txid)):
     version, payload = payload.split(':', 1)
     if version != '0':
         raise RuntimeError('Cannot parse payload version: %s', version)
-    (schema, table), operation, states, configuration_version = pickle.loads(payload)
-    return MutationEvent(id, schema, table, operation, states, txid, timestamp)
+    (schema, table), operation, primary_key_columns, states, configuration_version = pickle.loads(payload)
+    return MutationEvent(id, schema, table, operation, primary_key_columns, states, txid, timestamp)
 
 
 BATCH_INFO_STATEMENT = """

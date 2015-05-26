@@ -27,15 +27,22 @@ class MutationBatch(object):
         if not isinstance(other, MutationBatch):
             return False
         else:
-            return compare('id', 'start_txid', 'end_txid', 'node', 'events')(self, other)
+            return compare(
+                'id',
+                'start_txid',
+                'end_txid',
+                'node',
+                'events',
+            )(self, other)
 
 
 class MutationEvent(object):
-    def __init__(self, id, schema, table, operation, states, transaction_id, timestamp):
+    def __init__(self, id, schema, table, operation, primary_key_columns, states, transaction_id, timestamp):
         self.id = id
         self.schema = schema
         self.table = table
         self.operation = operation
+        self.primary_key_columns = primary_key_columns
         self.states = tuple(states)
         self.transaction_id = transaction_id
         self.timestamp = timestamp
@@ -54,4 +61,13 @@ class MutationEvent(object):
         if not isinstance(other, MutationEvent):
             return False
         else:
-            return compare('id', 'schema', 'table', 'operation', 'states', 'transaction_id', 'timestamp')(self, other)
+            return compare(
+                'id',
+                'schema',
+                'table',
+                'operation',
+                'primary_key_columns',
+                'states',
+                'transaction_id',
+                'timestamp',
+            )(self, other)

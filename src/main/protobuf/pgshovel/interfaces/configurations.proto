@@ -9,11 +9,14 @@ message TableConfiguration {
     // The relation name of this table.
     required string name = 1;
 
+    // The primary key column(s) for this table.
+    repeated string primary_keys = 2;
+
     // The columns that will be monitored on this table.
-    repeated string columns = 2;
+    repeated string columns = 3;
 
     // The schema where the table is located.
-    optional string schema = 3 [default="public"];
+    optional string schema = 4 [default="public"];
 
 }
 

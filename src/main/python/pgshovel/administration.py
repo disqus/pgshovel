@@ -22,6 +22,7 @@ from pgshovel.interfaces.configurations_pb2 import (
     ClusterConfiguration,
     ReplicationSetConfiguration,
 )
+from pgshovel.utilities import unique
 from pgshovel.utilities.datastructures import FormattedSequence
 from pgshovel.utilities.postgresql import (
     Transaction,
@@ -233,14 +234,14 @@ def get_managed_databases(cluster, dsns, configure=True, skip_inaccessible=False
 def setup_triggers(cluster, cursor, name, configuration):
     trigger = cluster.get_trigger_name(name)
 
-    def create_trigger(schema, table, columns):
+    def create_trigger(schema, table, primary_keys, columns):
         logger.info('Installing (or replacing) log trigger on %s.%s...', schema, table)
 
         statement = """
             CREATE TRIGGER {name}
             AFTER INSERT OR UPDATE OF {columns} OR DELETE
             ON {schema}.{table}
-            FOR EACH ROW EXECUTE PROCEDURE {cluster_schema}.log(%s, %s, %s)
+            FOR EACH ROW EXECUTE PROCEDURE {cluster_schema}.log(%s, %s, %s, %s)
         """.format(
             name=quote(trigger),
             columns=', '.join(map(quote, columns)),
@@ -257,12 +258,19 @@ def setup_triggers(cluster, cursor, name, configuration):
 
         cursor.execute(statement, (
             cluster.get_queue_name(name),
-            pickle.dumps(frozenset(columns)),
+            pickle.dumps(primary_keys),
+            pickle.dumps(columns),
             get_version(configuration)),
         )
 
     for table in configuration.tables:
-        create_trigger(table.schema, table.name, table.columns)
+        primary_keys = unique(list(table.primary_keys))
+        create_trigger(
+            table.schema,
+            table.name,
+            primary_keys,
+            unique(primary_keys + list(table.columns)),
+        )
 
 
 def drop_trigger(cluster, cursor, name, schema, table):

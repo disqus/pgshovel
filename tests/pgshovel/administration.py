@@ -45,6 +45,7 @@ def test_workflows(zookeeper):
         replication_set.databases.add(dsn=primary_dsn)
         replication_set.tables.add(
             name='auth_user',
+            primary_keys=['id'],
             columns=['id', 'username'],
         )
 
@@ -54,6 +55,7 @@ def test_workflows(zookeeper):
             replication_set.databases.add(dsn=replica_dsn)
             replication_set.tables.add(
                 name='accounts_userprofile',
+                primary_keys=['id'],
                 columns=['id', 'user_id', 'display_name']
             )
             update_set(cluster, 'example', replication_set)

@@ -26,10 +26,11 @@ def __initialize__(SD):
 __initialize__(SD)
 
 
-queue, columns_encoded, configuration_version = TD['args']
+queue, key_columns_encoded, columns_encoded, configuration_version = TD['args']
 plpy.execute(enqueue_statement, (queue, 'operation', '0:%s' % pickle.dumps((
     (TD['table_schema'], TD['table_name']),
     TD['event'],
+    pickle.loads(key_columns_encoded),
     map(create_state_filter(columns_encoded), (TD['old'], TD['new'])),
     configuration_version
 ))))

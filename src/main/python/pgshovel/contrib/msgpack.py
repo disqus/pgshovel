@@ -62,6 +62,7 @@ def encode_event(codec, event):
         event.schema,
         event.table,
         event.operation,
+        event.primary_key_columns,
         event.states,
         event.transaction_id,
         event.timestamp,

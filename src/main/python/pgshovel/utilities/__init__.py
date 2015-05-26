@@ -28,3 +28,19 @@ def import_extras(name):
         print >> s, ''
         print >> s, '*' * 80
         raise
+
+
+def unique(sequence):
+    """
+    Returns a new sequence containing the unique elements from the provided
+    sequence, while preserving the same type and order of the original
+    sequence.
+    """
+    result = []
+    for item in sequence:
+        if item in result:
+            continue  # we already have seen this item
+
+        result.append(item)
+
+    return type(sequence)(result)
