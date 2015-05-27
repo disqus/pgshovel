@@ -35,7 +35,7 @@ def test_handler(kafka):
     producer = SimpleProducer(client, topic)
     writer = KafkaWriter(producer, topic, codec)
 
-    event = MutationEvent(1, "public", "auth_user", "INSERT", (None, {"id": 1}), 1, 1)
+    event = MutationEvent(1, "public", "auth_user", "INSERT", ["id"], (None, {"id": 1}), 1, 1)
     batch = MutationBatch(1, 1, 2, uuid.uuid1(), [event])
     writer.push(batch)
 

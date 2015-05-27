@@ -148,6 +148,23 @@ To run the test suite::
 
     make test
 
+Dependency Versioning
+---------------------
+
+``pgshovel`` is intended to be used as both a client library, as well as a
+standalone application. As such dependencies need to be declared in two places:
+``setup.py`` and ``requirements.txt``.
+
+``setup.py`` should include dependencies as version ranges to ensure
+compatibility and flexibility with other dependencies when used as a library.
+
+``requirements.txt`` should include dependencies as specific revision tags,
+equivalent to the output of ``pip freeze`` in the Debian virtualenv, so that
+all standalone deployments always use a consistent collection of dependencies.
+
+Test dependencies should be declared in both the ``tests_require`` section of
+``setup.py`` (as flexible ranges), as well as in ``requirements.test.txt`` (as
+specific versions.)
 
 .. _Databus: https://github.com/linkedin/databus
 .. _PostgreSQL: http://www.postgresql.org/

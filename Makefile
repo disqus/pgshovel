@@ -22,6 +22,7 @@ install: build
 
 develop: build
 	make -C vendor all
+	pip install --upgrade pip setuptools
 	pip install -e .
 	pip install -r requirements.test.txt
 

@@ -1,9 +1,15 @@
 # pgshovel
 futures==2.2.0
-kazoo==2.0
+kazoo==2.1
 protobuf==2.6.1
 psycopg2==2.6
 tabulate==0.7.4
 
+# pgshovel[msgpack]
+msgpack-python==0.4.6
+
+# pgshovel[kafka]
+kafka-python==0.9.3
+
 # pgshovel[sentry]
-raven==5.2.0
+raven==5.3.1
