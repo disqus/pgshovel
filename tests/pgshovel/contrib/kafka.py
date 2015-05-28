@@ -6,12 +6,9 @@ import uuid
 import pytest
 from pgshovel.contrib.kafka import KafkaWriter
 from pgshovel.contrib.msgpack import codec
-from pgshovel.events import (
-    MutationBatch,
-    MutationEvent,
-)
 from pgshovel.utilities import import_extras
 from tests.pgshovel.fixtures import (
+    batch_builder,
     kafka,
     zookeeper,
 )
@@ -35,8 +32,7 @@ def test_handler(kafka):
     producer = SimpleProducer(client, topic)
     writer = KafkaWriter(producer, topic, codec)
 
-    event = MutationEvent(1, "public", "auth_user", "INSERT", ["id"], (None, {"id": 1}), 1, 1)
-    batch = MutationBatch(1, 1, 2, uuid.uuid1(), [event])
+    batch = batch_builder(3)
     writer.push(batch)
 
     consumer = SimpleConsumer(client, 'test', topic)

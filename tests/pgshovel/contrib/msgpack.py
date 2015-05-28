@@ -1,15 +1,11 @@
 import uuid
 
 from pgshovel.contrib.msgpack import codec
-from pgshovel.events import (
-    MutationBatch,
-    MutationEvent,
-)
+from tests.pgshovel.fixtures import batch_builder
 
 
 def test_codec():
-    event = MutationEvent(1, "public", "auth_user", "INSERT", ["id"], (None, {"id": 1}), 1, 1)
-    batch = MutationBatch(1, 1, 2, uuid.uuid1(), [event])
+    batch = batch_builder(3)
     payload = codec.encode(batch)
     decoded = codec.decode(payload)
     assert decoded == batch

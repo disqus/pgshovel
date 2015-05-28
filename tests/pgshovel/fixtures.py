@@ -1,9 +1,15 @@
 import os
+import random
+import string
 import uuid
 from contextlib import closing
 
 import psycopg2
 
+from pgshovel.testing import (
+    BatchBuilder,
+    EventBuilder,
+)
 from services import (
     Kafka,
     Postgres,
@@ -95,3 +101,18 @@ def create_temporary_database(server, prefix='test', schema=DEFAULT_SCHEMA):
         connection.commit()
 
     return dsn
+
+
+def generate_random_string(length, characters=string.letters + string.digits):
+    return ''.join(random.choice(characters) for _ in xrange(length))
+
+
+batch_builder = BatchBuilder((
+    EventBuilder(
+        'auth_user',
+        lambda: {
+            'id': random.randint(0, 1e7),
+            'username': generate_random_string(10),
+        },
+    ),
+))
