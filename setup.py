@@ -29,7 +29,7 @@ class PyTest(test):
 
 setup(
     name='pgshovel',
-    version='0.2.0',
+    version='0.2.1',
     setup_requires=(
         'setuptools>=8.0',
     ),
