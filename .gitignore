@@ -3,4 +3,5 @@
 .*.sw*
 .coverage
 coverage.xml
+/dist
 /htmlcov
