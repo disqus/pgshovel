@@ -1,15 +1,25 @@
 import importlib
+import operator
 import sys
 from contextlib import contextmanager
 
 
 def load(path):
     """
-    Loads a module member from a lookup path (using ``path.to.module:member``
-    syntax.)
+    Loads a module member from a lookup path.
+
+    Paths are composed of two sections: a module path, and an attribute path,
+    separated by a colon.
+
+    For example::
+
+        >>> from pgshovel.utilities import load
+        >>> load('sys:stderr.write')
+        <built-in method write of file object at 0x10885a1e0>
+
     """
-    module, name = path.split(':')
-    return getattr(importlib.import_module(module), name)
+    module, attribute = path.split(':')
+    return operator.attrgetter(attribute)(importlib.import_module(module))
 
 
 @contextmanager
