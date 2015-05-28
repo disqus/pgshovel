@@ -96,6 +96,19 @@ Dropping a Replication Set
 
     pgshovel-drop-group example
 
+Configuration
+=============
+
+The configuration file search path is (in order of precedence):
+
+#. the path specified by the ``-f`` or ``--configuration-file`` command line option,
+#. ``~/.pgshovel`` (the home directory of the user running the command),
+#. ``/etc/pgshovel.conf``.
+
+The file ``src/main/python/pgshovel/configuration/pgshovel.conf`` contains the
+default configuration and contains comprehensive documentation on the available
+options.
+
 Operations
 ==========
 
@@ -107,6 +120,27 @@ Upgrades
 
 Monitoring
 ----------
+
+PgQ
+~~~
+
+The mutation log (where mutation events are buffered before being forwarded by
+the `Relay`_) can be monitored using the `Diamond PgQ Collector`_, or any other
+tools designed for monitoring queue consumption and throughput.
+
+PgQ provides many useful data points, including pending (unconsumed) events,
+throughput rates, replication lag, and other metrics.
+
+pgshovel-relay
+~~~~~~~~~~~~~~
+
+It's is highly recommended to use Raven_ to report application warnings and
+errors to a Sentry_ installation by providing a custom `logging configuration
+file`_ in your pgshovel `Configuration`_ file.
+
+The ``raven`` Python module is installed by default with the Debian package
+installation. The necessary dependencies for reporting can also be installed as
+a ``setuptools`` extra with ``pip install pgshovel[sentry]``.
 
 Planned Replica Promotion
 -------------------------
@@ -168,8 +202,12 @@ specific versions.)
 
 .. _Databus: https://github.com/linkedin/databus
 .. _PostgreSQL: http://www.postgresql.org/
+.. _Raven: https://github.com/getsentry/raven-python
+.. _Sentry: https://github.com/getsentry/sentry
 .. _SkyTools: http://skytools.projects.pgfoundry.org/
 .. _Slony: http://www.slony.info/
-.. _`change data capture`: http://en.wikipedia.org/wiki/Change_data_capture
-.. _`logical decoding`: http://www.postgresql.org/docs/9.4/static/logicaldecoding-explanation.html
 .. _`Apache ZooKeeper`: https://zookeeper.apache.org/
+.. _`Diamond PgQ Collector`: https://github.com/python-diamond/Diamond/blob/master/src/collectors/pgq/pgq.py
+.. _`change data capture`: http://en.wikipedia.org/wiki/Change_data_capture
+.. _`logging configuration file`: https://docs.python.org/2/library/logging.config.html#configuration-file-format
+.. _`logical decoding`: http://www.postgresql.org/docs/9.4/static/logicaldecoding-explanation.html
