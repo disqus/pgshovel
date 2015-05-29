@@ -339,6 +339,9 @@ def validate_set_configuration(configuration):
         assert database.dsn not in dsns, 'duplicate databases not allowed: %s' % (database.dsn,)
         dsns.add(database.dsn)
 
+    for table in configuration.tables:
+        assert len(table.primary_keys) > 0, 'table %s.%s must have associated primary key column(s)' % (quote(table.schema), quote(table.name),)
+
 
 def configure_set(cluster, cursor, name, configuration, previous_configuration=None):
     """

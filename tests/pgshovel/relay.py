@@ -50,8 +50,18 @@ def setup_cluster(cluster, dsns):
     replication_set = ReplicationSetConfiguration()
     for dsn in dsns:
         replication_set.databases.add(dsn=dsn)
-    replication_set.tables.add(name='auth_user', columns=['id', 'username'])
-    replication_set.tables.add(name='accounts_userprofile', columns=['id', 'user_id', 'display_name'])
+
+    replication_set.tables.add(
+        name='auth_user',
+        columns=['id', 'username'],
+        primary_keys=['id'],
+    )
+    replication_set.tables.add(
+        name='accounts_userprofile',
+        columns=['id', 'user_id', 'display_name'],
+        primary_keys=['id'],
+    )
+
     create_set(cluster, 'example', replication_set)
 
     for dsn in dsns:
