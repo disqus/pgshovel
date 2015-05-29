@@ -23,7 +23,7 @@ install: build
 develop: build
 	make -C vendor all
 	pip install --upgrade pip setuptools
-	pip install -e . -e .[kafka] -e .[msgpack]
+	pip install -e .[kafka,msgpack]
 	pip install -r requirements.test.txt
 
 check:
