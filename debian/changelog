@@ -1,3 +1,9 @@
+pgshovel (0.2.1) precise; urgency=low
+
+  * New upstream release.
+
+ -- Disqus Operations <ops@disqus.com>  Thu, 28 May 2015 23:32:55 +0000
+
 pgshovel (0.1.1) precise; urgency=low
 
   * Initial release.

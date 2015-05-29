@@ -3,6 +3,7 @@
 /usr/share/python/pgshovel/bin/pgshovel-initialize-cluster /usr/bin/pgshovel-initialize-cluster
 /usr/share/python/pgshovel/bin/pgshovel-inspect-set /usr/bin/pgshovel-inspect-set
 /usr/share/python/pgshovel/bin/pgshovel-list-sets /usr/bin/pgshovel-list-sets
+/usr/share/python/pgshovel/bin/pgshovel-relay /usr/bin/pgshovel-relay
 /usr/share/python/pgshovel/bin/pgshovel-shell /usr/bin/pgshovel-shell
 /usr/share/python/pgshovel/bin/pgshovel-update-set /usr/bin/pgshovel-update-set
 /usr/share/python/pgshovel/bin/pgshovel-upgrade-cluster /usr/bin/pgshovel-upgrade-cluster
