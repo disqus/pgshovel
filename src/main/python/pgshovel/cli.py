@@ -167,7 +167,10 @@ def relay(options, cluster, consumer, set):
 
         signal.signal(signal.SIGINT, __request_exit)
         signal.signal(signal.SIGTERM, __request_exit)
-        signal.signal(signal.SIGINFO, __request_info)
+        signal.signal(signal.SIGUSR1, __request_info)
+
+        if hasattr(signal, 'SIGINFO'):  # not available on Linux
+            signal.signal(signal.SIGINFO, __request_info)
 
         while True:
             relay.join(0.1)
