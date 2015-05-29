@@ -134,7 +134,7 @@ throughput rates, replication lag, and other metrics.
 pgshovel-relay
 ~~~~~~~~~~~~~~
 
-It's is highly recommended to use Raven_ to report application warnings and
+It is highly recommended to use Raven_ to report application warnings and
 errors to a Sentry_ installation by providing a custom `logging configuration
 file`_ in your pgshovel `Configuration`_ file.
 
@@ -167,9 +167,9 @@ sustained write loads due to write amplification -- every row affected by a
 mutation operation must be recorded to the event table, and incurs all of the
 typical overhead of a database write.
 
-In write-heavy environments, it is typically a better choice to choice use
-logical decoding (assuming you can run PostgreSQL 9.4), foregoing some
-configuration flexibility for increased throughput.
+In write-heavy environments, it is typically a better choice to use logical
+decoding (assuming you can run PostgreSQL 9.4), foregoing some configuration
+flexibility for increased throughput.
 
 Development
 ===========
