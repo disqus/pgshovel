@@ -1,3 +1,22 @@
+"""
+.. caution::
+
+    The default Kafka broker configuration (for 0.8, at time of writing) has
+    maximum message size of 1 MB (``message.max.bytes`` property).
+
+    Having too low of a value for this setting can lead to rejected publishes
+    (and halted replication) if or when the size of a ``MutationBatch`` exceeds
+    the maximum message size accepted by the broker. This can be particularly
+    problematic when dealing with very active workloads, or data sets that have
+    very large rows.
+
+    In addition to tuning the ``message.max.bytes`` size for your particular
+    workload, it is beneficial to adjust the queue configuration located in the
+    ``pgq.queue`` table -- specifically the ``queue_ticker_max_count`` and
+    ``queue_ticker_max_lag`` keys -- to encourage smaller and more frequently
+    generated batches.
+
+"""
 from __future__ import absolute_import
 
 import threading
