@@ -61,53 +61,53 @@ Creating a Cluster
 
 ::
 
-    pgshovel-initialize-cluster
+    pgshovel cluster initialize
 
 ::
 
-    pgshovel-create-set example < configuration
+    pgshovel set create example /path/to/configuration.pgshovel
 
 ::
 
-    pgshovel-list-sets
+    pgshovel set list
 
 ::
 
-    pgshovel-inspect-set example
+    pgshovel set inspect example
 
 Running a Relay
 ---------------
 
 ::
 
-    pgshovel-relay example consumer
+    pgshovel-kafka-relay example
 
 Updating a Replication Set
 --------------------------
 
 ::
 
-    pgshovel-upgrade-group example < configuration
+    pgshovel set upgrade /path/to/configuration.pgshovel
 
 Dropping a Replication Set
 --------------------------
 
 ::
 
-    pgshovel-drop-group example
+    pgshovel set drop example
 
 Configuration
 =============
 
-The configuration file search path is (in order of precedence):
+The execution environment can be controlled in two ways: command line flags and
+environment variables. There is a small set of configuration parameters that
+are available on every command (``pgshovel --help``), while the remainder are
+distinct on a command basis.
 
-#. the path specified by the ``-f`` or ``--configuration-file`` command line option,
-#. ``~/.pgshovel`` (the home directory of the user running the command),
-#. ``/etc/pgshovel.conf``.
-
-The file ``src/main/python/pgshovel/configuration/pgshovel.conf`` contains the
-default configuration and contains comprehensive documentation on the available
-options.
+All command options can also be defined as environment variables. To translate
+an option to an environment variable, prefix the option name with
+``PGSHOVEL_``, uppercase the label, and convert all dashes to underscores. For
+example, ``--zookeeper-hosts`` becomes ``PGSHOVEL_ZOOKEEPER_HOSTS``.
 
 Operations
 ==========
@@ -138,9 +138,9 @@ It is highly recommended to use Raven_ to report application warnings and
 errors to a Sentry_ installation by providing a custom `logging configuration
 file`_ in your pgshovel `Configuration`_ file.
 
-The ``raven`` Python module is installed by default with the Debian package
-installation. The necessary dependencies for reporting can also be installed as
-a ``setuptools`` extra with ``pip install pgshovel[sentry]``.
+The ``raven`` Python module is installed by default with the Docker image. The
+necessary dependencies for reporting can also be installed as a ``setuptools``
+extra with ``pip install pgshovel[sentry]``.
 
 Planned Replica Promotion
 -------------------------
@@ -193,7 +193,7 @@ standalone application. As such dependencies need to be declared in two places:
 compatibility and flexibility with other dependencies when used as a library.
 
 ``requirements.txt`` should include dependencies as specific revision tags,
-equivalent to the output of ``pip freeze`` in the Debian virtualenv, so that
+equivalent to the output of ``pip freeze`` in the Docker environment, so that
 all standalone deployments always use a consistent collection of dependencies.
 
 Test dependencies should be declared in both the ``tests_require`` section of

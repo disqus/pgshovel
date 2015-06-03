@@ -38,11 +38,9 @@ def check_version(cluster):
 
 
 class Cluster(object):
-    def __init__(self, name, configuration):
+    def __init__(self, name, zookeeper):
         self.name = name
-        self.configuration = configuration
-
-        self.zookeeper = KazooClient(configuration.get('zookeeper', 'hosts'))
+        self.zookeeper = zookeeper
 
     def __enter__(self):
         self.start()

@@ -1,144 +1,67 @@
 import functools
-import inspect
-import json
-import logging
 import logging.config
-import optparse
-import os
-import pkg_resources
-import sys
-import textwrap
-from ConfigParser import (
-    NoOptionError,
-    SafeConfigParser,
-)
-from datetime import timedelta
 
-from tabulate import tabulate
+import click
+from kazoo.client import KazooClient
 
 from pgshovel.cluster import Cluster
-from pgshovel.utilities.templates import (
-    resource_filename,
-    resource_stream,
-)
+from pgshovel.utilities import load
+from pgshovel.utilities.templates import resource_filename
 
 
-logger = logging.getLogger(__name__)
+pass_cluster = click.make_pass_decorator(Cluster)
 
 
-CONFIGURATION_PATHS = (
-    os.path.expanduser('~/.pgshovel'),
-    '/etc/pgshovel.conf',
-)
+class LoadPathType(click.ParamType):
+    name = 'path'
+
+    def get_metavar(self, param):
+        return 'IMPORT_PATH'
+
+    def convert(self, value, param, ctx):
+        try:
+            return load(value)
+        except AttributeError:
+            self.fail('Could not load module attribute: %s' % value, param, ctx)
+        except ImportError:
+            self.fail('Could not import module: %s' % value, param, ctx)
+        except ValueError:
+            self.fail('Invalid module path: %s' % value, param, ctx)
 
 
-class Option(object):
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
+def entrypoint(function):
+    """
+    Adds common command-line options to the provided click command or group
+    implementation.
 
-    def add(self, parser):
-        parser.add_option(*self.args, **self.kwargs)
+    This must be the last (innermost) decorator used.
+    """
+    @click.option(
+        '--cluster',
+        default='default',
+        help="Unique identifier for this cluster.",
+    )
+    @click.option(
+        '--logging-configuration',
+        type=click.Path(dir_okay=False, exists=True),
+        default=resource_filename('configuration/logging.conf'),
+        help="Path to Python logging configuration file.",
+    )
+    @click.option(
+        '--zookeeper-hosts',
+        default='127.0.0.1:2181',
+        help="ZooKeeper connection string (as a comma separated list of hosts, with optional chroot path.)",
+    )
+    @click.version_option()
+    @click.pass_context
+    @functools.wraps(function)  # preserve original name, etc.
+    def decorated(context, cluster, zookeeper_hosts, logging_configuration, *args, **kwargs):
+        logging.config.fileConfig(logging_configuration)
 
+        zookeeper = KazooClient(zookeeper_hosts)
+        context.obj = cluster = Cluster(cluster, zookeeper)
 
-def command(function=None, *args, **kwargs):
+        return function(cluster, *args, **kwargs)
 
-    def decorator(function, options=(), description=None):
-        argspec = inspect.getargspec(function)
-
-        arguments = ' '.join(argspec.args[2:])
-        if argspec.varargs:
-            arguments = '%s [%s ...]' % (arguments, argspec.varargs,)
-
-        if description:
-            description = textwrap.dedent(description)
-
-        parser = optparse.OptionParser(
-            usage='%%prog [options] %s' % arguments,
-            description=description,
-        )
-
-        parser.add_option(
-            '--version',
-            action='store_true',
-            help='print version and exit',
-        )
-
-        parser.add_option(
-            '-c', '--cluster',
-            default='default', metavar='NAME',
-            help='cluster identifier (%default)',
-        )
-
-        parser.add_option(
-            '-f', '--configuration-file', metavar='PATH',
-            help='path to configuration file (defaults to %s)' % ', '.join(CONFIGURATION_PATHS),
-        )
-
-        for option in options:
-            option.add(parser)
-
-        @functools.wraps(function)
-        def wrapper():
-            options, arguments = parser.parse_args()
-
-            if options.version:
-                print pkg_resources.get_distribution("pgshovel").version
-                sys.exit(0)
-
-            configuration = SafeConfigParser(defaults={
-                'cluster': options.cluster,
-            })
-            configuration.readfp(resource_stream('configuration/pgshovel.conf'))
-            configuration.read((options.configuration_file,) if options.configuration_file is not None else CONFIGURATION_PATHS)
-
-            try:
-                logging_configuration = configuration.get('logging', 'configuration')
-            except NoOptionError:
-                logging_configuration = resource_filename('configuration/logging.conf')
-
-            if logging_configuration:
-                logging.config.fileConfig(logging_configuration)
-
-            try:
-                cluster = Cluster(options.cluster, configuration)
-
-                try:
-                    return function(options, cluster, *arguments)
-                except TypeError as e:
-                    if str(e).startswith('%s() takes ' % function.__name__):
-                        parser.print_usage(sys.stderr)
-                        sys.exit(1)
-                    else:
-                        raise
-            except Exception as error:
-                logger.exception(error)
-                sys.exit(1)
-
-        return wrapper
-
-    if function and (not args and not kwargs):
-        return decorator(function)
-    else:
-        return functools.partial(decorator, *args, **kwargs)
-
-
-def _default_json(value):
-    if isinstance(value, timedelta):
-        return value.total_seconds()
-    else:
-        raise TypeError('%r is not JSON serializable')
-
-
-formatters = {
-    'json': lambda rows, headers: json.dumps([dict(zip(headers, row)) for row in rows], indent=2, default=_default_json),
-    'table': tabulate,
-}
-
-
-FormatOption = Option(
-    '--format', metavar='FORMATTER',
-    choices=formatters.keys(),
-    default='table',
-    help='output formatter to use (one of: %s)' % ', '.join(sorted(formatters)),
-)
+    # TODO: Also partial the default ``auto_envvar_prefix`` to ``main``.
+    return decorated

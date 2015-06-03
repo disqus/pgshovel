@@ -1,6 +1,23 @@
 Change Log
 ==========
 
+Version 0.2.2
+------------
+
+- Changes command line interface to a single entry point for all management
+  commands (``pgshovel``), and separate entry points for relays
+  (``pgshovel-stream-relay``, ``pgshovel-kafka-relay``.)
+- Removes Debian support, in favor of Docker.
+- Removes configuration file support in favor of command line flags and
+  environment variables for easier container deployment.
+
+Features
+~~~~~~~~
+
+- Add JSON codec (although right now, it only acts as an encoder.)
+- Adds support for enviromnment variables for configuration.
+
+
 Version 0.2.1.1
 ----------------
 

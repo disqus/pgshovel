@@ -1,0 +1,8 @@
+databases {
+    dsn: "postgresql://postgres@postgres/example"
+}
+tables {
+    name: "auth_user"
+    primary_keys: "id"
+    columns: "username"
+}

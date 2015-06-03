@@ -1,19 +1,19 @@
 import code
+import functools
 import logging
 import signal
-import sys
 import time
 from datetime import timedelta
+
+import click
+from tabulate import tabulate
 
 from pgshovel import administration
 from pgshovel.interfaces.configurations_pb2 import ReplicationSetConfiguration
 from pgshovel.relay import Relay
-from pgshovel.utilities import load
 from pgshovel.utilities.commands import (
-    FormatOption,
-    Option,
-    command,
-    formatters,
+    entrypoint,
+    pass_cluster,
 )
 from pgshovel.utilities.datastructures import FormattedSequence
 from pgshovel.utilities.protobuf import (
@@ -25,41 +25,40 @@ from pgshovel.utilities.protobuf import (
 logger = logging.getLogger(__name__)
 
 
-def __get_codec(options, cls):
-    # TODO: allow switching between text and binary codecs as an option
-    return TextCodec(cls)
+@click.group()
+@entrypoint
+def main(cluster):
+    pass
 
 
-@command
-def shell(options, cluster):
+@main.group(short_help='Manage cluster configuration.')
+def cluster():
+    pass
+
+
+@cluster.command(short_help='Initialize a new replication cluster.')
+@pass_cluster
+def initialize(cluster):
     with cluster:
-        exports = {
-            'cluster': cluster,
-        }
-        return code.interact(local=exports)
+        administration.initialize_cluster(cluster)
 
 
-@command(description="Initializes a new cluster in ZooKeeper.")
-def initialize_cluster(options, cluster):
+@cluster.command(short_help='Upgrade an existing replication cluster.')
+@click.option('--force/--no-force', default=False)
+@pass_cluster
+def upgrade(cluster, force):
     with cluster:
-        return administration.initialize_cluster(cluster)
+        administration.upgrade_cluster(cluster, force=force)
 
 
-@command(
-    options=(
-        Option('--force', action='store_true', default=False, help='skip version checks'),
-    )
-)
-def upgrade_cluster(options, cluster):
-    with cluster:
-        return administration.upgrade_cluster(cluster, force=options.force)
+@main.group(short_help='Manage replication set configuration.')
+def set():
+    pass
 
 
-@command(
-    description="Lists the registered replication sets.",
-    options=(FormatOption,),
-)
-def list_sets(options, cluster):
+@set.command(short_help='List replication sets.')
+@pass_cluster
+def list(cluster):
     with cluster:
         rows = []
         for name, (configuration, stat) in administration.fetch_sets(cluster):
@@ -70,110 +69,63 @@ def list_sets(options, cluster):
                 administration.get_version(configuration),
             ))
 
-        print formatters[options.format](sorted(rows), headers=('name', 'database', 'table', 'version'))
+    # TODO: Bring back pluggable formatters.
+    click.echo(tabulate(sorted(rows), headers=('name', 'database', 'table', 'version')))
 
 
-@command(description="Creates a new replication set.")
-def create_set(options, cluster, name, path='/dev/stdin'):
-    with open(path, 'r') as f:
-        data = f.read()
-
-    with cluster:
-        configuration = __get_codec(options, ReplicationSetConfiguration).decode(data)
-        return administration.create_set(cluster, name, configuration)
-
-
-@command(description="Provides details about a replication set.")
-def inspect_set(options, cluster, name):
+@set.command(short_help='Retrieve replication set configuration.')
+@click.argument('name', type=str)
+@pass_cluster
+def inspect(cluster, name):
     with cluster:
         data, stat = cluster.zookeeper.get(cluster.get_set_path(name))
         configuration = BinaryCodec(ReplicationSetConfiguration).decode(data)
-        sys.stdout.write(__get_codec(options, ReplicationSetConfiguration).encode(configuration))
-        sys.stderr.write(administration.get_version(configuration) + '\n')
+        click.echo(TextCodec(ReplicationSetConfiguration).encode(configuration))
+        click.echo('version: %s' % (administration.get_version(configuration)), err=True)
 
 
-allow_forced_removal = Option(
-    '--allow-forced-removal',
-    action='store_true',
-    default=False,
-    help='allows removing databases from ZooKeeper, even if the database '
-         'cannot be reached for the replication set to be unconfigured '
-         '(triggers dropped, queue removed, etc.)',
-)
-
-
-@command(
-    description="Updates a replication set.",
-    options=(
-        allow_forced_removal,
-    ),
-)
-def update_set(options, cluster, name, path='/dev/stdin'):
-    with open(path, 'r') as f:
-        data = f.read()
+@set.command(short_help='Create new replication set.')
+@click.argument('name', type=str)
+@click.argument('configuration', type=click.File('r'), default='-')
+@pass_cluster
+def create(cluster, name, configuration):
+    codec = TextCodec(ReplicationSetConfiguration)
+    configuration = codec.decode(configuration.read())
 
     with cluster:
-        configuration = __get_codec(options, ReplicationSetConfiguration).decode(data)
-        return administration.update_set(
-            cluster,
-            name,
-            configuration,
-            allow_forced_removal=options.allow_forced_removal,
-        )
+        return administration.create_set(cluster, name, configuration)
 
 
-@command(
-    description="Drops replication set(s).",
-    options=(
-        allow_forced_removal,
-    ),
+@set.command(short_help='Updating existing replication set.')
+@click.argument('name', type=str)
+@click.argument('configuration', type=click.File('r'), default='-')
+@pass_cluster
+def update(cluster, name, configuration):
+    codec = TextCodec(ReplicationSetConfiguration)
+    configuration = codec.decode(configuration.read())
+
+    # TODO: Support forced removal again.
+    with cluster:
+        return administration.update_set(cluster, name, configuration)
+
+
+@set.command(short_help='Drop existing replication set.')
+@click.argument('name', type=str)
+@pass_cluster
+def drop(cluster, name):
+    # TODO: Support forced removal again.
+    with cluster:
+        return administration.drop_set(cluster, name)
+
+
+@main.command(short_help='Launch interactive shell.')
+@pass_cluster
+def shell(cluster):
+    with cluster:
+        return code.interact(local={'cluster': cluster})
+
+
+__main__ = functools.partial(
+    main,
+    auto_envvar_prefix='PGSHOVEL',
 )
-def drop_set(options, cluster, name):
-    with cluster:
-        return administration.drop_set(
-            cluster,
-            name,
-            allow_forced_removal=options.allow_forced_removal,
-        )
-
-
-@command
-def relay(options, cluster, consumer, set):
-    configuration = dict(
-        cluster.configuration.items(
-            'relay:%s' % (consumer,),
-            raw=False,
-            vars={
-                'consumer': consumer,
-                'set': set,
-            },
-        ),
-    )
-
-    cls = load(configuration.pop('handler', 'pgshovel.relay:StreamWriter'))
-    handler = cls.configure(configuration)
-
-    with cluster:
-        relay = Relay(cluster, set, consumer, handler)
-        relay.start()
-
-        def __request_exit(signal, frame):
-            logger.info('Caught signal %s, stopping...', signal)
-            relay.stop_async()
-
-        def __request_info(signal, frame):
-            for started, worker in relay.workers().values():
-                logger.info('%s uptime: %s', worker, timedelta(seconds=time.time() - started))
-
-        signal.signal(signal.SIGINT, __request_exit)
-        signal.signal(signal.SIGTERM, __request_exit)
-        signal.signal(signal.SIGUSR1, __request_info)
-
-        if hasattr(signal, 'SIGINFO'):  # not available on Linux
-            signal.signal(signal.SIGINFO, __request_info)
-
-        while True:
-            relay.join(0.1)
-            if not relay.is_alive():
-                relay.result()
-                break

@@ -1,10 +1,10 @@
 import uuid
-from ConfigParser import SafeConfigParser
 from contextlib import (
     contextmanager,
 )
 
 import pytest
+from kazoo.client import KazooClient
 
 from pgshovel.administration import (
     create_set,
@@ -28,11 +28,10 @@ postgres = contextmanager(postgres)
 
 def test_workflows(zookeeper):
     zookeeper_server, _ = zookeeper
-
-    configuration = SafeConfigParser()
-    configuration.add_section('zookeeper')
-    configuration.set('zookeeper', 'hosts', '%s:%s' % (zookeeper_server.host, zookeeper_server.port))
-    cluster = Cluster('test_%s' % (uuid.uuid1().hex,), configuration)
+    cluster = Cluster(
+        'test_%s' % (uuid.uuid1().hex,),
+        KazooClient('%s:%s' % (zookeeper_server.host, zookeeper_server.port)),
+    )
 
     with cluster:
         initialize_cluster(cluster)

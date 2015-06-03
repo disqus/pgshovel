@@ -29,11 +29,12 @@ class PyTest(test):
 
 setup(
     name='pgshovel',
-    version='0.2.1.1',
+    version='0.2.2',
     setup_requires=(
         'setuptools>=8.0',
     ),
     install_requires=(
+        'click~=4.0',
         'futures~=2.2',
         'kazoo~=2.0',
         'protobuf~=2.6',
@@ -42,15 +43,9 @@ setup(
     ),
     entry_points={
         'console_scripts': [
-            'pgshovel-create-set = pgshovel.cli:create_set',
-            'pgshovel-drop-set = pgshovel.cli:drop_set',
-            'pgshovel-initialize-cluster = pgshovel.cli:initialize_cluster',
-            'pgshovel-inspect-set = pgshovel.cli:inspect_set',
-            'pgshovel-list-sets = pgshovel.cli:list_sets',
-            'pgshovel-relay = pgshovel.cli:relay',
-            'pgshovel-shell = pgshovel.cli:shell',
-            'pgshovel-update-set = pgshovel.cli:update_set',
-            'pgshovel-upgrade-cluster = pgshovel.cli:upgrade_cluster',
+            'pgshovel = pgshovel.cli:__main__',
+            'pgshovel-kafka-relay = pgshovel.contrib.kafka:__main__ [kafka]',
+            'pgshovel-stream-relay = pgshovel.relay:__main__',
         ],
     },
     include_package_data=True,

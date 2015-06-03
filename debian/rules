@@ -1,6 +1,0 @@
-#!/usr/bin/make -f
-
-%:
-	make clean build
-
-	dh $@ --with python-virtualenv --no-test

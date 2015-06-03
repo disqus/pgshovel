@@ -21,10 +21,10 @@ install: build
 	pip install .
 
 develop: build
-	make -C vendor all
 	pip install --upgrade pip setuptools
 	pip install -e .[kafka,msgpack]
 	pip install -r requirements.test.txt
+	make -C vendor all
 
 check:
 	pyflakes $$(find $(PYTHON_OUT) $(TESTS_FOLDER) -name \*.py -not -name \*_pb2.py)
@@ -40,4 +40,19 @@ test-xunit: clean develop
 deb:
 	dpkg-buildpackage
 
-.PHONY: all clean build develop install check test deb
+images:
+	docker build -t pgshovel .
+	docker build -t postgres-pgshovel docker/postgres-pgshovel/
+	docker build -t python-pgqueue docker/python-pgqueue/
+
+.PHONY:
+	all \
+	build \
+	check \
+	clean \
+	deb \
+	develop \
+	images \
+	install \
+	test \
+	test-xunit

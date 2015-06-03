@@ -1,9 +1,12 @@
-import itertools
+import functools
 import logging
 import pickle
+import signal
 import threading
 import time
+from datetime import timedelta
 
+import click
 import psycopg2
 from concurrent.futures import (
     Future,
@@ -21,6 +24,10 @@ from pgshovel.events import (
 from pgshovel.interfaces.configurations_pb2 import (
     ClusterConfiguration,
     ReplicationSetConfiguration,
+)
+from pgshovel.utilities.commands import (
+    LoadPathType,
+    entrypoint,
 )
 from pgshovel.utilities.protobuf import BinaryCodec
 
@@ -133,29 +140,6 @@ class Worker(threading.Thread):
         logger.debug('Requesting stop...')
         self.__stop_requested.set()
         return self.__result
-
-
-class StreamWriter(object):
-    def __init__(self, stream, serializer=str):
-        self.stream = stream
-        self.serializer = serializer
-        self.__lock = threading.Lock()
-
-    def push(self, batch):
-        with self.__lock:
-            for serialized in itertools.imap(self.serializer, batch.events):
-                self.stream.write(serialized)
-                self.stream.write('\n')
-            self.stream.flush()
-
-    @classmethod
-    def configure(cls, configuration):
-        """
-        Configuration Parameters:
-
-        path: the path to the output file/stream
-        """
-        return cls(open(configuration.get('path', '/dev/stdout'), 'w'))
 
 
 RECOVERABLE_ERRORS = (psycopg2.OperationalError,)
@@ -309,3 +293,87 @@ class Relay(threading.Thread):
         logger.debug('Requesting stop...')
         self.__stop_requested.set()
         return self.__result
+
+
+def relay_entrypoint(command):
+    """
+    Adds common command-line options, arguments, and signal handling to the
+    provided relay constructor.
+
+    This must be the last (innermost) decorator used.
+    """
+    @click.argument('set')
+    @click.option(
+        '--consumer-id',
+        default='default',
+        help="PgQ consumer registration identifier.",
+    )
+    @entrypoint
+    def decorated(cluster, set, consumer_id, *args, **kwargs):
+        handler = command(cluster, set, *args, **kwargs)
+
+        with cluster:
+            relay = Relay(cluster, set, consumer_id, handler)
+            relay.start()
+
+            def __request_exit(signal, frame):
+                logger.info('Caught signal %s, stopping...', signal)
+                relay.stop_async()
+
+            def __request_info(signal, frame):
+                for started, worker in relay.workers().values():
+                    logger.info('%s uptime: %s', worker, timedelta(seconds=time.time() - started))
+
+            signal.signal(signal.SIGINT, __request_exit)
+            signal.signal(signal.SIGTERM, __request_exit)
+            signal.signal(signal.SIGUSR1, __request_info)
+
+            if hasattr(signal, 'SIGINFO'):  # not available on Linux
+                signal.signal(signal.SIGINFO, __request_info)
+
+            while True:
+                relay.join(0.1)
+                if not relay.is_alive():
+                    relay.result()
+                    break
+
+    return decorated
+
+
+class StreamWriter(object):
+    def __init__(self, stream, codec):
+        self.stream = stream
+        self.codec = codec
+        self.__lock = threading.Lock()
+
+    def push(self, batch):
+        with self.__lock:
+            self.stream.write(self.codec.encode(batch))
+            self.stream.write('\n')
+            self.stream.flush()
+
+
+@click.command(
+    help="Publishes mutation batches to the specified stream/file.",
+)
+@click.option(
+    '--stream',
+    type=click.File('w'),
+    default='-',
+    help="Path to output file.",
+)
+@click.option(
+    '--codec',
+    type=LoadPathType(),
+    default='pgshovel.codecs:json',
+    help="Codec used when encoding batches for publishing.",
+)
+@relay_entrypoint
+def main(cluster, set, stream, codec):
+    return StreamWriter(stream, codec)
+
+
+__main__ = functools.partial(
+    main,
+    auto_envvar_prefix='PGSHOVEL',
+)

@@ -19,12 +19,14 @@
 """
 from __future__ import absolute_import
 
+import functools
 import threading
 
-from pgshovel.utilities import (
-    import_extras,
-    load,
-)
+import click
+
+from pgshovel.relay import relay_entrypoint
+from pgshovel.utilities import import_extras
+from pgshovel.utilities.commands import LoadPathType
 
 with import_extras('kafka'):
     from kafka.client import KafkaClient
@@ -54,17 +56,35 @@ class KafkaWriter(object):
         with self.__lock:  # TODO: ensure this is required, better safe than sorry
             self.producer.send_messages(self.topic, self.codec.encode(batch))
 
-    @classmethod
-    def configure(cls, configuration):
-        """
-        Configuration Parameters:
 
-        hosts: comma separated list of Kafka brokers
-        topic: the Kafka topic to publish the `MutationBatch` records to
-        codec: the codec implementation used for serializing `MutationBatch` records for publishing
-        """
-        client = KafkaClient(configuration.get('hosts', '127.0.0.1:9092'))
-        producer = SimpleProducer(client)  # TODO: add options for ack, etc
-        topic = configuration.get('topic', 'mutations.%(cluster)s.%(set)s' % configuration)
-        codec = load(configuration.get('codec', 'pgshovel.contrib.msgpack:codec'))
-        return cls(producer, topic, codec)
+@click.command(
+    help="Publishes mutation batches to the specified Kafka topic.",
+)
+@click.option(
+    '--kafka-hosts',
+    default='127.0.0.1:9092',
+    help="Kafka broker connection string (as a comma separated list of hosts.)",
+)
+@click.option(
+    '--kafka-topic',
+    default='{cluster}.{set}.mutations',
+    help="Destination Topic for mutation batch publishing.",
+)
+@click.option(
+    '--codec',
+    type=LoadPathType(),
+    default='pgshovel.codecs:json',
+    help="Codec used when encoding batches for publishing.",
+)
+@relay_entrypoint
+def main(cluster, set, kafka_hosts, kafka_topic, codec):
+    client = KafkaClient(kafka_hosts)
+    producer = SimpleProducer(client)
+    topic = kafka_topic.format(cluster=cluster.name, set=set)
+    return KafkaWriter(producer, topic, codec)
+
+
+__main__ = functools.partial(
+    main,
+    auto_envvar_prefix='PGSHOVEL',
+)
