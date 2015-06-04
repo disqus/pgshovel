@@ -1,5 +1,3 @@
-import uuid
-
 from pgshovel.contrib.msgpack import codec
 from tests.pgshovel.fixtures import batch_builder
 
