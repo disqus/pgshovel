@@ -45,7 +45,6 @@ def test_workflows(zookeeper):
         replication_set.tables.add(
             name='auth_user',
             primary_keys=['id'],
-            columns=['id', 'username'],
         )
 
         with cluster:

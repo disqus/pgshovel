@@ -25,7 +25,7 @@ CREATE TABLE auth_user (
 );
 CREATE TABLE accounts_userprofile (
     id bigserial PRIMARY KEY NOT NULL,
-    user_id bigint REFERENCES "auth_user" ("id"),
+    user_id bigint UNIQUE REFERENCES "auth_user" ("id"),
     display_name varchar(250)
 );
 """

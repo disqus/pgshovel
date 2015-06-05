@@ -57,7 +57,6 @@ def setup_cluster(cluster, dsns):
     )
     replication_set.tables.add(
         name='accounts_userprofile',
-        columns=['id', 'user_id', 'display_name'],
         primary_keys=['id'],
     )
 
@@ -104,6 +103,23 @@ def test_worker(cluster):
             'id': 1,
             'username': 'example',
         })
+
+        # also make sure tables without column whitelist defined replicate the entire row state
+        with closing(psycopg2.connect(dsn)) as connection, connection.cursor() as cursor:
+            cursor.execute('INSERT INTO accounts_userprofile (user_id, display_name) VALUES (%s, %s)', (1, 'example',))
+            connection.commit()
+            force_tick(connection, cluster.get_queue_name('example'))
+
+        (event,) = queue.get(True, 1).events
+
+        assert event.table == 'accounts_userprofile'
+        assert event.operation == 'INSERT'
+        assert event.states == (None, {
+            'id': 1,
+            'user_id': 1,
+            'display_name': 'example',
+        })
+
 
         worker.stop_async()
         worker.result(1)

@@ -7,10 +7,14 @@ def __initialize__(SD):
 
         def create_state_filter(columns_encoded):
             columns = pickle.loads(columns_encoded)
-            def filter_state(state):
-                if not state:
+            if columns:
+                def filter_state(state):
+                    if not state:
+                        return state
+                    return dict(item for item in state.items() if item[0] in columns)
+            else:
+                def filter_state(state):
                     return state
-                return dict(item for item in state.items() if item[0] in columns)
             return filter_state
 
         SD.update({

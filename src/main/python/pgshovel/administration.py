@@ -234,43 +234,44 @@ def get_managed_databases(cluster, dsns, configure=True, skip_inaccessible=False
 def setup_triggers(cluster, cursor, name, configuration):
     trigger = cluster.get_trigger_name(name)
 
-    def create_trigger(schema, table, primary_keys, columns):
-        logger.info('Installing (or replacing) log trigger on %s.%s...', schema, table)
+    def create_trigger(table):
+        logger.info('Installing (or replacing) log trigger on %s.%s...', table.schema, table.name)
+
+        primary_keys = unique(list(table.primary_keys))
+        all_columns = unique(primary_keys + list(table.columns))
+        if table.columns:
+            column_list = 'OF %s' % ', '.join(map(quote, all_columns))
+        else:
+            column_list = ''
 
         statement = """
             CREATE TRIGGER {name}
-            AFTER INSERT OR UPDATE OF {columns} OR DELETE
+            AFTER INSERT OR UPDATE {columns} OR DELETE
             ON {schema}.{table}
             FOR EACH ROW EXECUTE PROCEDURE {cluster_schema}.log(%s, %s, %s, %s)
         """.format(
             name=quote(trigger),
-            columns=', '.join(map(quote, columns)),
-            table=quote(table),
-            schema=quote(schema),
+            columns=column_list,
+            schema=quote(table.schema),
+            table=quote(table.name),
             cluster_schema=quote(cluster.schema),
         )
 
         cursor.execute("DROP TRIGGER IF EXISTS {name} ON {schema}.{table}".format(
             name=quote(trigger),
-            schema=quote(schema),
-            table=quote(table),
+            schema=quote(table.schema),
+            table=quote(table.name),
         ))
 
         cursor.execute(statement, (
             cluster.get_queue_name(name),
             pickle.dumps(primary_keys),
-            pickle.dumps(columns),
+            pickle.dumps(all_columns if table.columns else None),
             get_version(configuration)),
         )
 
     for table in configuration.tables:
-        primary_keys = unique(list(table.primary_keys))
-        create_trigger(
-            table.schema,
-            table.name,
-            primary_keys,
-            unique(primary_keys + list(table.columns)),
-        )
+        create_trigger(table)
 
 
 def drop_trigger(cluster, cursor, name, schema, table):
