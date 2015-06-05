@@ -1,6 +1,14 @@
 Change Log
 ==========
 
+Version 0.2.3
+-------------
+
+- Adds the ability to monitor all columns in a table by omitting a column list.
+- Adds support for bidirectional JSON encoding when using the JSON codec.
+  (This enabled by default. To prevent the codec from adding type annotations,
+  ``pgshovel.codecs:jsonlite`` can be used.)
+
 Version 0.2.2
 ------------
 
