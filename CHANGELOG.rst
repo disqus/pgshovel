@@ -1,6 +1,12 @@
 Change Log
 ==========
 
+Version 0.2.4
+-------------
+
+- Upgrades ``futures`` dependency to all 3.0 compatible versions.
+- Fixes issue with Kafka producer construction in test suite.
+
 Version 0.2.3
 -------------
 

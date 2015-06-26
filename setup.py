@@ -29,13 +29,13 @@ class PyTest(test):
 
 setup(
     name='pgshovel',
-    version='0.2.3',
+    version='0.2.4',
     setup_requires=(
         'setuptools>=8.0',
     ),
     install_requires=(
         'click~=4.0',
-        'futures~=2.2',
+        'futures~=3.0',
         'kazoo~=2.0',
         'protobuf~=2.6',
         'psycopg2~=2.6',

@@ -29,7 +29,7 @@ def test_handler(kafka):
     topic = 'mutations'
 
     client = KafkaClient(hosts)
-    producer = SimpleProducer(client, topic)
+    producer = SimpleProducer(client)
     writer = KafkaWriter(producer, topic, codec)
 
     batch = batch_builder(3)
