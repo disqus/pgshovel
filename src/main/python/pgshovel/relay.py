@@ -84,7 +84,7 @@ class Worker(threading.Thread):
                 statement = "SELECT * FROM pgq.register_consumer(%s, %s)"
                 cursor.execute(statement, (self.cluster.get_queue_name(self.set), self.consumer))
                 (new,) = cursor.fetchone()
-                logger.info('Registered as queue consumer using %s registration.', 'new' if new else 'existing')
+                logger.info('Registered as queue consumer: %s (%s registration).', self.consumer, 'new' if new else 'existing')
                 connection.commit()
 
             logger.info('Ready to relay events.')
@@ -166,7 +166,7 @@ class Relay(threading.Thread):
 
     def run(self):
         try:
-            logger.debug('Started relay using %s.', self.handler)
+            logger.debug('Started relay (cluster: %s, set: %s) using %s.', self.cluster, self.set, self.handler)
 
             def __handle_session_state_change(state):
                 if state == KazooState.SUSPENDED:
