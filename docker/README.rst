@@ -1,6 +1,13 @@
 Testing
 #######
 
+Build Images
+------------
+
+::
+
+    make images
+
 ZooKeeper
 ---------
 
@@ -17,8 +24,6 @@ Kafka
 
 PostgreSQL
 ----------
-
-(Requires a built image of ``postgres-pgshovel``.)
 
 ::
 

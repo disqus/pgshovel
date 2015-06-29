@@ -40,10 +40,8 @@ test-xunit: clean develop
 deb:
 	dpkg-buildpackage
 
-images:
-	docker build -t pgshovel .
-	docker build -t postgres-pgshovel docker/postgres-pgshovel/
-	docker build -t python-pgqueue docker/python-pgqueue/
+image:
+	docker build -t pgshovel:latest .
 
 .PHONY:
 	all \
@@ -52,7 +50,7 @@ images:
 	clean \
 	deb \
 	develop \
-	images \
+	image \
 	install \
 	test \
 	test-xunit
