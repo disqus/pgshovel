@@ -1,0 +1,37 @@
+postgres:
+    build: docker/postgres
+
+protoc:
+    build: docker/protoc
+    working_dir: /usr/src/app
+    volumes:
+        - .:/usr/src/app
+
+pgqd:
+    image: disqus/pgqd
+    links:
+        - postgres
+    environment:
+        PGHOST: postgres
+        PGUSER: postgres
+
+zookeeper:
+    image: confluent/zookeeper
+
+kafka:
+    image: confluent/kafka
+    links:
+        - zookeeper
+
+pgshovel:
+    build: .
+    entrypoint: ['pgshovel']
+    environment:
+        PYTHONDONTWRITEBYTECODE: 1
+        PGSHOVEL_ZOOKEEPER_HOSTS: zookeeper
+    links:
+        - kafka
+        - postgres
+        - zookeeper
+    volumes:
+        - .:/usr/src/app

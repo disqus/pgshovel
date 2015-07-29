@@ -2,8 +2,6 @@ import functools
 import logging
 import posixpath
 
-from kazoo.client import KazooClient
-
 from pgshovel import __version__
 from pgshovel.interfaces.configurations_pb2 import ClusterConfiguration
 from pgshovel.utilities.protobuf import BinaryCodec

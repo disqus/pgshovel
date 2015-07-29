@@ -1,20 +1,17 @@
-import os
 import random
 import string
 import uuid
 from contextlib import closing
 
 import psycopg2
+import pytest
+from kazoo.client import KazooClient
 
+from pgshovel.administration import initialize_cluster
+from pgshovel.cluster import Cluster
 from pgshovel.testing import (
     BatchBuilder,
     EventBuilder,
-)
-from services import (
-    Kafka,
-    Postgres,
-    ZooKeeper,
-    get_open_port,
 )
 
 
@@ -30,64 +27,21 @@ CREATE TABLE accounts_userprofile (
 );
 """
 
-def noop(*args, **kwargs):
-    pass
 
-
-def zookeeper(setup=noop):
-    server = ZooKeeper(
-        os.environ['ZOOKEEPER_PATH'],
-        host='localhost',
-        port=get_open_port(),
+@pytest.yield_fixture
+def cluster():
+    cluster = Cluster(
+        'test_%s' % (uuid.uuid1().hex,),
+        KazooClient('zookeeper'),
     )
-    server.setup()
-    server.start()
-    try:
-        yield server, setup(server)
-    finally:
-        server.stop()  # XXX: needs to be failure tolerant
-        server.teardown()
+
+    with cluster:
+        initialize_cluster(cluster)
+        yield cluster
 
 
-def postgres(setup=noop):
-    server = Postgres(
-        os.environ['POSTGRES_PATH'],
-        host='localhost',
-        port=get_open_port(),
-        max_prepared_transactions=10,  # XXX
-    )
-    server.setup()
-    server.start()
-    try:
-        yield server, setup(server)
-    finally:
-        server.stop()  # XXX: needs to be failure tolerant
-        server.teardown()
-
-
-def kafka(zookeeper, broker_id=1, setup=noop):
-    # TODO: probably would make sense to chroot the zookeeper path
-    zookeeper_server, _ = zookeeper
-    broker = Kafka(
-        os.environ['KAFKA_PATH'],
-        host='localhost',
-        port=get_open_port(),
-        configuration={
-            'broker.id': broker_id,
-            'zookeeper.connect': '%s:%s' % (zookeeper_server.host, zookeeper_server.port),
-        },
-    )
-    broker.setup()
-    broker.start()
-    try:
-        yield broker, setup(broker)
-    finally:
-        broker.stop()  # XXX: needs to be failure tolerant
-        broker.teardown()
-
-
-def create_temporary_database(server, prefix='test', schema=DEFAULT_SCHEMA):
-    base = 'postgresql://%s:%s' % (server.host, server.port)
+def create_temporary_database(prefix='test', schema=DEFAULT_SCHEMA):
+    base = 'postgresql://postgres@postgres'
 
     name = '%s_%s' % (prefix,  uuid.uuid1().hex,)
     dsn = base + '/postgres'

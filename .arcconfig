@@ -7,6 +7,7 @@
   "base": "git:merge-base(origin/master), arc:upstream, git:HEAD^",
   "differential.field-selector": "DisqusDifferentialFieldSelector",
   "history.immutable": false,
-  "unit.engine": "DisqusUnitTestEngine",
-  "unit.disqus.python+coverage": "make test-xunit XUNIT_FILE=%s COVERAGE_FILE=%s COVERAGE_INCLUDE_PATHS=%s"
+  "unit.engine": "GenericXUnitTestEngine",
+  "unit.genericxunit.script": "make test-xunit",
+  "unit.genericxunit.result_path": ".xunit"
 }

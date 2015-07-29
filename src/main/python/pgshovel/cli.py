@@ -1,16 +1,12 @@
 import code
 import functools
 import logging
-import signal
-import time
-from datetime import timedelta
 
 import click
 from tabulate import tabulate
 
 from pgshovel import administration
 from pgshovel.interfaces.configurations_pb2 import ReplicationSetConfiguration
-from pgshovel.relay import Relay
 from pgshovel.utilities.commands import (
     entrypoint,
     pass_cluster,

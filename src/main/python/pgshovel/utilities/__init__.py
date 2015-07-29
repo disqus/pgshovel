@@ -26,7 +26,7 @@ def load(path):
 def import_extras(name):
     try:
         yield
-    except ImportError as e:
+    except ImportError:
         s = sys.stderr
         print >> s, '*' * 80
         print >> s, ''

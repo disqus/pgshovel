@@ -1,17 +1,11 @@
 from __future__ import absolute_import
 
-import functools
 import uuid
 
-import pytest
 from pgshovel.contrib.kafka import KafkaWriter
 from pgshovel.contrib.msgpack import codec
 from pgshovel.utilities import import_extras
-from tests.pgshovel.fixtures import (
-    batch_builder,
-    kafka,
-    zookeeper,
-)
+from tests.pgshovel.fixtures import batch_builder
 
 with import_extras('kafka'):
     from kafka.client import KafkaClient
@@ -19,16 +13,10 @@ with import_extras('kafka'):
     from kafka.producer.simple import SimpleProducer
 
 
-zookeeper = pytest.yield_fixture(zookeeper)
-kafka = pytest.yield_fixture(kafka)
+def test_handler():
+    topic = '%s-mutations' % (uuid.uuid1().hex,)
 
-
-def test_handler(kafka):
-    kafka_broker, _ = kafka
-    hosts = '%s:%s' % (kafka_broker.host, kafka_broker.port)
-    topic = 'mutations'
-
-    client = KafkaClient(hosts)
+    client = KafkaClient('kafka')
     producer = SimpleProducer(client)
     writer = KafkaWriter(producer, topic, codec)
 

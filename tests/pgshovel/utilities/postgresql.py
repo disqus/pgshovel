@@ -1,31 +1,15 @@
 import uuid
-import os
 
 import psycopg2
 import pytest
 
 from pgshovel.utilities.postgresql import ManagedConnection
-from services import Postgres, get_open_port
 
-
-@pytest.yield_fixture(scope='module')
-def database():
-    server = Postgres(
-        os.environ['POSTGRES_PATH'],
-        host='localhost',
-        port=get_open_port(),
-        max_prepared_transactions=10,  # XXX
-    )
-    server.setup()
-    server.start()
-    yield server
-    server.stop()
-    server.teardown()
 
 
 @pytest.yield_fixture
-def managed_connection(database):
-    dsn = 'postgresql://%s:%s' % (database.host, database.port,)
+def managed_connection():
+    dsn = 'postgresql://postgres@postgres'
 
     connection = psycopg2.connect(dsn + '/postgres')  # TODO join
     connection.autocommit = True

@@ -5,6 +5,7 @@ except ImportError:
     pass
 
 import os
+import sys
 from setuptools import (
     find_packages,
     setup,
@@ -15,21 +16,27 @@ from setuptools.command.test import test
 PACKAGE_DIR = os.path.join('src', 'main', 'python')
 
 
-class PyTest(test):
+class TestCommand(test):
+    user_options = [('pytest-args=', 'a', "arguments to pass to py.test runner")]
+
+    def initialize_options(self):
+        test.initialize_options(self)
+        self.pytest_args = []
+
     def finalize_options(self):
         test.finalize_options(self)
         self.test_args = []
         self.test_suite = True
 
     def run_tests(self):
-        import pytest, sys
-        errno = pytest.main(self.test_args)
+        import pytest
+        errno = pytest.main(self.pytest_args)
         sys.exit(errno)
 
 
 setup(
     name='pgshovel',
-    version='0.2.4',
+    version='0.3.0-dev',
     setup_requires=(
         'setuptools>=8.0',
     ),
@@ -55,7 +62,7 @@ setup(
     },
     classifiers=['Private :: Do Not Upload'],
     cmdclass = {
-        'test': PyTest,
+        'test': TestCommand,
     },
     tests_require=(
         'pytest',

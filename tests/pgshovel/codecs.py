@@ -14,4 +14,4 @@ def test_codec():
 
 def test_lite_codec():
     batch = batch_builder(3)
-    payload = jsonlite.encode(batch)
+    jsonlite.encode(batch)
