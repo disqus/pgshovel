@@ -22,13 +22,13 @@ check:
 	pyflakes $$(find $(PYTHON_OUT) $(TESTS_FOLDER) -name \*.py -not -name \*_pb2.py)
 
 test: build interfaces
-	docker-compose run --rm --entrypoint=python pgshovel setup.py test
+	python ephemeral-cluster.py run --rm --entrypoint=python pgshovel setup.py test
 
 .xunit:
 	mkdir -p .xunit
 
 test-xunit: .xunit build interfaces
-	docker-compose run --rm --entrypoint=python pgshovel setup.py test -a "--junit-xml .xunit/results.xml" || test $$? -le 1
+	python ephemeral-cluster.py run --rm --entrypoint=python pgshovel setup.py test -a "--junit-xml .xunit/results.xml" || test $$? -le 1
 
 .PHONY:
 	build \
