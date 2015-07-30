@@ -1,0 +1,162 @@
+message Message {
+
+    message Header {
+
+        // Unique identifier of the process that sent this message.
+        required bytes publisher = 1;
+
+        // A serial number for each message sent by this publisher. This should
+        // be increased by one for each message sent/seen. Allows ensuring all
+        // messages are seen by the consumer in order, without gaps.
+        required uint64 sequence = 2;
+
+        // When this message was generated. This is solely for debugging and
+        // monitoring purposes, such as identifying how far behind the replication
+        // stream is in seconds rather than bytes.
+        required Timestamp timestamp = 3;
+
+    }
+
+    required Header header = 1;
+
+    // Required.
+    oneof operation {
+
+        Begin begin = 2;
+        Mutation mutation = 3;
+        Commit commit = 4;
+        Rollback rollback = 5;
+
+    }
+
+}
+
+
+// http://www.postgresql.org/docs/9.3/static/functions-info.html#FUNCTIONS-TXID-SNAPSHOT-PARTS
+message Snapshot {
+
+    required uint64 min = 1;
+
+    required uint64 max = 2;
+
+    repeated uint64 active = 3;
+
+}
+
+// https://github.com/google/protobuf/blob/master/src/google/protobuf/timestamp.proto#L95-L106
+message Timestamp {
+
+  required int64 seconds = 1;
+
+  required int32 nanos = 2;
+
+}
+
+
+message Batch {
+
+    required uint64 id = 1;
+
+    required bytes node = 2;
+
+}
+
+// https://github.com/markokr/skytools/blob/master/sql/pgq/structure/tables.sql#L102-L124
+message Tick {
+
+    required uint64 id = 1;
+
+    required Snapshot snapshot = 2;
+
+    required Timestamp timestamp = 3;
+
+}
+
+
+message Begin {
+
+    required Batch batch = 1;
+
+    required Tick start = 2;
+
+    required Tick end = 3;
+
+}
+
+
+message Mutation {
+
+    enum Operation {
+        INSERT = 1;
+        UPDATE = 2;
+        DELETE = 3;
+    }
+
+    message Row {
+
+        message Column {
+
+            // Should be unique.
+            required string name = 1;
+
+            // Not required. (Values that are not present are `NULL`/`None`.)
+            // This follows the same conversion rules as PL/Python:
+            // http://www.postgresql.org/docs/9.3/static/plpython-data.html
+            oneof value {
+
+                bool boolean = 2;
+                int64 integer64 = 3;
+                float float = 4;
+
+                // TODO: This needs to ensure that strings are transcoded from
+                // the server encoding to UTF-8.
+                string string = 5;  // UTF-8
+
+            }
+
+        }
+
+        repeated Column columns = 1;
+
+    }
+
+    required uint64 id = 1;
+
+    required Batch batch = 2;
+
+    required string schema = 3;
+
+    required string table = 4;
+
+    required Operation operation = 5;
+
+    // A column names that can be used to uniquely identify this row in it's
+    // table. Generally, this is the primary key(s) of the row, but could also
+    // be a unique (and not null) index.
+    repeated string identity_columns = 6;
+
+    // Must not exist for INSERT, but must exist for UPDATE and DELETE.
+    optional Row old = 7;
+
+    // Must not exist for DELETE, but must exist for INSERT and UPDATE.
+    optional Row new = 8;
+
+    required Timestamp timestamp = 9;
+
+    required uint64 transaction = 10;
+
+}
+
+
+message Commit {
+
+    required Batch batch = 1;
+
+}
+
+
+message Rollback {
+
+    required Batch batch = 1;
+
+}
