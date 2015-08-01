@@ -22,38 +22,64 @@ class SequencingError(Exception):
         super(SequencingError, self).__init__(message)
 
 
+class InvalidPublisher(Exception):
+    pass
+
+
 class RepeatedSequenceError(SequencingError):
     template = 'Repeated sequence: {0} and {1}'
+
+
+class InvalidSequenceStartError(Exception):
+    pass
 
 
 def validate(messages):
     """
     Validates a stream of Message instances, ensuring that the correct
-    sequencing order is maintained and all messages are present.
+    sequencing order is maintained, all messages are present, and only a single
+    publisher is communicating on the stream.
 
     Duplicate messages are dropped if they have already been yielded.
     """
-    # Keep a map of all of the last seen messages by publisher.
-    publishers = {}
+    previous = None
+
+    # All of the publishers that have been previously seen during the execution
+    # of this validator. (Does not include the currently active publisher.)
+    dead = set()
 
     for message in messages:
-        # TODO: This could just store the previous sequence ID and content hash
-        # if memory usage is a concern here, instead of the full message.
-        key = message.header.publisher
-        previous = publishers.get(key)
+        if message.header.publisher in dead:
+            raise InvalidPublisher('Received message from previously used publisher.')
+
         if previous is not None:
-            # If this the last message we just saw, ignore it if the contents
-            # are the same. This could happen if the publisher is retrying a
-            # message that was not acknowledged, but still written.
-            if previous.header.sequence == message.header.sequence:
-                if previous == message:
-                    logger.debug('Skipping duplicate message.')
-                    continue
-                else:
-                    raise RepeatedSequenceError(previous, message)
-            elif previous.header.sequence + 1 != message.header.sequence:
-                raise SequencingError(previous, message)
+            if previous.header.publisher == message.header.publisher:
+                # If the message we just received is exactly the same as the
+                # previous message, we can safely ignore it. (This could happen
+                # if the publisher is retrying a message that was not fully
+                # acknowledged before being partitioned from the recipient, but
+                # was actually written.)
+                if previous.header.sequence == message.header.sequence:
+                    if previous == message:
+                        logger.debug('Skipping duplicate message.')
+                        continue
+                    else:
+                        raise RepeatedSequenceError(previous, message)
+                elif previous.header.sequence + 1 != message.header.sequence:
+                    raise SequencingError(previous, message)
+            else:
+                logger.info(
+                    'Publisher of %r has changed from %r to %r.',
+                    messages,
+                    previous.header.publisher,
+                    message.header.publisher,
+                )
+                dead.add(previous.header.publisher)
+                previous = None
+
+        if previous is None and message.header.sequence != 0:
+            raise InvalidSequenceStartError('Invalid sequence start point: {0}'.format(message.header.sequence))
 
         yield message
 
-        publishers[key] = message
+        previous = message
