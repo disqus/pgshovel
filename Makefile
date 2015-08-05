@@ -12,7 +12,10 @@ $(JAVA_OUT):
 $(PYTHON_OUT):
 	mkdir -p $(PYTHON_OUT)
 
-build:
+requirements.txt: setup.py
+	python setup.py requirements -e all | sed 1d | sort > requirements.txt
+
+build: requirements.txt
 	docker-compose build
 
 clean:

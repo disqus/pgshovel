@@ -7,6 +7,7 @@ except ImportError:
 import os
 import sys
 from setuptools import (
+    Command,
     find_packages,
     setup,
 )
@@ -14,6 +15,41 @@ from setuptools.command.test import test
 
 
 PACKAGE_DIR = os.path.join('src', 'main', 'python')
+
+packages = {
+    'click': 'click~=4.0',
+    'futures': 'futures~=3.0',
+    'kafka-python': 'kafka-python~=0.9',
+    'kazoo': 'kazoo~=2.0',
+    'msgpack-python': 'msgpack-python~=0.4',
+    'protobuf': 'protobuf~=2.6',
+    'psycopg2': 'psycopg2~=2.6',
+    'sentry': 'raven~=5.5',
+    'setuptools': 'setuptools>=8.0',
+    'tabulate': 'tabulate~=0.7',
+}
+
+install_requires = (
+    packages['click'],
+    packages['futures'],
+    packages['kazoo'],
+    packages['protobuf'],
+    packages['psycopg2'],
+    packages['tabulate'],
+)
+
+extras = {
+    'all': tuple(packages.values()),
+    'kafka': (
+        packages['kafka-python'],
+    ),
+    'msgpack': (
+        packages['msgpack-python'],
+    ),
+    'sentry': (
+        packages['sentry'],
+    ),
+}
 
 
 class TestCommand(test):
@@ -34,20 +70,29 @@ class TestCommand(test):
         sys.exit(errno)
 
 
+class RequirementsCommand(Command):
+    user_options = [('extras=', 'e', 'name of extras')]
+
+    def initialize_options(self):
+        self.extras = None
+
+    def finalize_options(self):
+        if self.extras is not None and self.extras not in extras:
+            raise ValueError('Invalid name of extras group, must be one of {0!r}'.format(extras.keys()))
+
+    def run(self):
+        requirements = extras[self.extras] if self.extras is not None else install_requires
+        for requirement in requirements:
+            sys.stdout.write('{0}\n'.format(requirement))
+
+
 setup(
     name='pgshovel',
     version='0.3.0-dev',
     setup_requires=(
-        'setuptools>=8.0',
+        packages['setuptools'],
     ),
-    install_requires=(
-        'click~=4.0',
-        'futures~=3.0',
-        'kazoo~=2.0',
-        'protobuf~=2.6',
-        'psycopg2~=2.6',
-        'tabulate~=0.7',
-    ),
+    install_requires=install_requires,
     entry_points={
         'console_scripts': [
             'pgshovel = pgshovel.cli:__main__',
@@ -62,20 +107,11 @@ setup(
     },
     classifiers=['Private :: Do Not Upload'],
     cmdclass = {
+        'requirements': RequirementsCommand,
         'test': TestCommand,
     },
     tests_require=(
         'pytest',
     ),
-    extras_require={
-        'msgpack': (
-            'msgpack-python~=0.4',
-        ),
-        'kafka': (
-            'kafka-python~=0.9',
-        ),
-        'sentry': (
-            'raven',
-        ),
-    },
+    extras_require=extras,
 )

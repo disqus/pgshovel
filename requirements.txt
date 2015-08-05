@@ -1,17 +1,10 @@
-# pgshovel
-click==4.1
-futures==2.2.0
-kazoo==2.1
-protobuf==2.6.1
-psycopg2==2.6
+click~=4.0
+futures~=3.0
+kafka-python~=0.9
+kazoo~=2.0
+msgpack-python~=0.4
+protobuf~=2.6
+psycopg2~=2.6
+raven~=5.5
 setuptools>=8.0
-tabulate==0.7.4
-
-# pgshovel[msgpack]
-msgpack-python==0.4.6
-
-# pgshovel[kafka]
-kafka-python==0.9.4
-
-# pgshovel[sentry]
-raven==5.3.1
+tabulate~=0.7
