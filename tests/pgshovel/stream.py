@@ -27,6 +27,9 @@ from pgshovel.stream import (
     SequencingError,
     StateTransitionError,
     StatefulStreamValidator,
+    TransactionAborted,
+    TransactionCancelled,
+    batched,
     get_operation,
     require_batch_id_advanced_if_same_node,
     require_batch_id_not_advanced_if_same_node,
@@ -181,7 +184,10 @@ def test_stateful_validator_unhandled_starting_state():
         next(validated)
 
 
-def make_message(payload, sequence=1, publisher=uuid.uuid1().bytes):
+DEFAULT_PUBLISHER = uuid.uuid1().bytes
+
+
+def make_message(payload, sequence=1, publisher=DEFAULT_PUBLISHER):
     message = Message(
         header=Message.Header(
             publisher=publisher,
@@ -194,52 +200,56 @@ def make_message(payload, sequence=1, publisher=uuid.uuid1().bytes):
     return Message.FromString(message.SerializeToString())
 
 
-def make_messages(payloads):
+def make_messages(payloads, publisher=DEFAULT_PUBLISHER):
     sequence = itertools.count()
 
     for payload in payloads:
-        yield make_message(payload, next(sequence))
+        yield make_message(payload, next(sequence), publisher)
+
+
+batch = Batch(id=1, node=uuid.uuid1().bytes)
+
+begin = Begin(
+    batch=batch,
+    start=Tick(
+        id=1,
+        snapshot=Snapshot(min=100, max=200),
+        timestamp=Timestamp(seconds=0, nanos=0),
+    ),
+    end=Tick(
+        id=2,
+        snapshot=Snapshot(min=150, max=250),
+        timestamp=Timestamp(seconds=10, nanos=0),
+    ),
+)
+
+mutation = Mutation(
+    id=1,
+    batch=batch,
+    schema='public',
+    table='users',
+    operation=Mutation.INSERT,
+    identity_columns=['id'],
+    new=Mutation.Row(
+        columns=[
+            Mutation.Row.Column(name='id', integer64=1),
+            Mutation.Row.Column(name='username', string='ted'),
+        ],
+    ),
+    timestamp=Timestamp(seconds=0, nanos=0),
+    transaction=1,
+)
+
+commit = Commit(batch=batch)
+
+rollback = Rollback(batch=batch)
 
 
 def test_successful_transaction():
-    batch = Batch(id=1, node=uuid.uuid1().bytes)
     messages = list(make_messages([
-        {
-            'begin': Begin(
-                batch=batch,
-                start=Tick(
-                    id=1,
-                    snapshot=Snapshot(min=100, max=200),
-                    timestamp=Timestamp(seconds=0, nanos=0),
-                ),
-                end=Tick(
-                    id=2,
-                    snapshot=Snapshot(min=150, max=250),
-                    timestamp=Timestamp(seconds=10, nanos=0),
-                ),
-            ),
-        },
-        {
-            'mutation': Mutation(
-                id=1,
-                batch=batch,
-                schema='public',
-                table='users',
-                operation=Mutation.INSERT,
-                identity_columns=['id'],
-                new=Mutation.Row(
-                    columns=[
-                        Mutation.Row.Column(name='id', integer64=1),
-                        Mutation.Row.Column(name='username', string='ted'),
-                    ],
-                ),
-                timestamp=Timestamp(seconds=0, nanos=0),
-                transaction=1,
-            ),
-        },
-        {
-            'commit': Commit(batch=batch),
-        },
+        {'begin': begin},
+        {'mutation': mutation},
+        {'commit': commit},
     ]))
 
     validated = validate_events(messages)
@@ -258,11 +268,7 @@ def copy(message, **replacements):
 
 @pytest.yield_fixture
 def message():
-    yield make_message({
-        'commit': Commit(
-            batch=Batch(id=1, node=uuid.uuid1().hex),
-        ),
-    })
+    yield make_message({'commit': commit})
 
 
 def test_require_same_batch(message):
@@ -384,3 +390,89 @@ def test_require_different_publisher(message):
             ),
             message,
         )
+
+
+def test_batch_iterator():
+    messages = make_messages([
+        {'begin': begin},
+        {'mutation': mutation},
+        {'mutation': mutation},
+        {'mutation': mutation},
+        {'commit': commit},
+    ])
+    batches = batched(validate_events(messages))
+
+    batch, mutations = next(batches)
+    assert batch == begin.batch
+    assert list(mutations) == [mutation] * 3
+
+
+def test_batch_iterator_early_exit():
+    messages = make_messages([
+        {'begin': begin},
+        {'mutation': mutation},
+    ])
+    batches = batched(validate_events(messages))
+
+    batch, mutations = next(batches)
+    assert batch == begin.batch
+    assert next(mutations) == mutation
+    with pytest.raises(TransactionAborted):
+        next(mutations)
+
+
+def test_batch_iterator_rolled_back():
+    messages = make_messages([
+        {'begin': begin},
+        {'mutation': mutation},
+        {'rollback': rollback},
+    ])
+    batches = batched(validate_events(messages))
+
+    batch, mutations = next(batches)
+    assert batch == begin.batch
+    assert next(mutations) == mutation
+    with pytest.raises(TransactionCancelled):
+        next(mutations)
+
+
+def test_batch_restarted():
+    incomplete = make_messages([
+        {'begin': begin},
+        {'mutation': mutation},
+    ], publisher=uuid.uuid1().bytes)
+    complete = make_messages([
+        {'begin': begin},
+        {'mutation': mutation},
+        {'commit': commit},
+    ], publisher=uuid.uuid1().bytes)
+    messages = itertools.chain(incomplete, complete)
+
+    batches = batched(validate_events(messages))
+
+    # The first batch should be aborted, since it didn't end with a
+    # commit/rollback before switching publishers.
+    batch, mutations = next(batches)
+    assert batch == begin.batch
+    assert next(mutations) == mutation
+    with pytest.raises(TransactionAborted):
+        next(mutations)
+
+    batch, mutations = next(batches)
+    assert batch == begin.batch
+    assert next(mutations) == mutation
+    with pytest.raises(StopIteration):
+        next(mutations)
+
+
+def test_batch_no_mutations():
+    messages = make_messages([
+        {'begin': begin},
+        {'commit': commit},
+    ])
+    batches = batched(validate_events(messages))
+
+    batch, mutations = next(batches)
+    assert batch == begin.batch
+    with pytest.raises(StopIteration):
+        next(mutations)
