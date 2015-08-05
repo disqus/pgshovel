@@ -1,14 +1,17 @@
 import functools
 import itertools
 import logging
+import numbers
 import uuid
 from collections import namedtuple
 
 from pgshovel.interfaces.stream_pb2 import (
     Begin,
+    Column,
     Commit,
     Mutation,
     Rollback,
+    Row,
 )
 
 
@@ -312,3 +315,53 @@ def batched(messages):
     key = lambda (state, message): (message.header.publisher, state.batch)
     for (publisher, batch), items in itertools.groupby(messages, key):
         yield batch, make_mutation_iterator(i[1] for i in items)
+
+
+class ColumnConverter(object):
+    def __init__(self):
+        self.conversions = {
+            basestring: lambda value: {'string': value.encode('utf8')},
+            bool: lambda value: {'boolean': value},
+            float: lambda value: {'float': value},
+            numbers.Integral: lambda value: {'integer64': value},
+        }
+
+    def to_python(self, value):
+        type = value.WhichOneof('value')
+        if type is not None:
+            result = getattr(value, type)
+        else:
+            result = None
+        return (value.name, result)
+
+    def to_protobuf(self, value):
+        key, value = value
+
+        parameters = {}
+        if value is not None:
+            for type, converter in self.conversions.items():
+                if isinstance(value, type):
+                    parameters.update(converter(value))
+                    break
+
+        return Column(name=key, **parameters)
+
+
+column_converter = ColumnConverter()
+
+
+class RowConverter(object):
+    def __init__(self, sorted=False):
+        self.sorted = sorted
+
+    def to_protobuf(self, value):
+        columns = map(column_converter.to_protobuf, value.items())
+        if self.sorted:
+            columns = sorted(columns, key=lambda column: column.name)
+        return Row(columns=columns)
+
+    def to_python(self, value):
+        return dict(map(column_converter.to_python, value.columns))
+
+
+row_converter = RowConverter()

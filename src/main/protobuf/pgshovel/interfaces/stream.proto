@@ -84,40 +84,42 @@ message Begin {
 }
 
 
+message Column {
+
+    // Should be unique.
+    required string name = 1;
+
+    // Not required. (Values that are not present are `NULL`/`None`.)
+    // This follows the same conversion rules as PL/Python:
+    // http://www.postgresql.org/docs/9.3/static/plpython-data.html
+    oneof value {
+
+        bool boolean = 2;
+        int64 integer64 = 3;
+        float float = 4;
+
+        // TODO: This needs to ensure that strings are transcoded from
+        // the server encoding to UTF-8.
+        string string = 5;  // UTF-8
+
+    }
+
+}
+
+
+message Row {
+
+    repeated Column columns = 1;
+
+}
+
+
 message Mutation {
 
     enum Operation {
         INSERT = 1;
         UPDATE = 2;
         DELETE = 3;
-    }
-
-    message Row {
-
-        message Column {
-
-            // Should be unique.
-            required string name = 1;
-
-            // Not required. (Values that are not present are `NULL`/`None`.)
-            // This follows the same conversion rules as PL/Python:
-            // http://www.postgresql.org/docs/9.3/static/plpython-data.html
-            oneof value {
-
-                bool boolean = 2;
-                int64 integer64 = 3;
-                float float = 4;
-
-                // TODO: This needs to ensure that strings are transcoded from
-                // the server encoding to UTF-8.
-                string string = 5;  // UTF-8
-
-            }
-
-        }
-
-        repeated Column columns = 1;
-
     }
 
     required uint64 id = 1;

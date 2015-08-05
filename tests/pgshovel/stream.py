@@ -7,10 +7,12 @@ import pytest
 from pgshovel.interfaces.stream_pb2 import (
     Batch,
     Begin,
+    Column,
     Commit,
     Message,
     Mutation,
     Rollback,
+    Row,
     Snapshot,
     Tick,
     Timestamp,
@@ -24,6 +26,7 @@ from pgshovel.stream import (
     InvalidSequenceStartError,
     RepeatedSequenceError,
     RolledBack,
+    RowConverter,
     SequencingError,
     StateTransitionError,
     StatefulStreamValidator,
@@ -230,10 +233,10 @@ mutation = Mutation(
     table='users',
     operation=Mutation.INSERT,
     identity_columns=['id'],
-    new=Mutation.Row(
+    new=Row(
         columns=[
-            Mutation.Row.Column(name='id', integer64=1),
-            Mutation.Row.Column(name='username', string='ted'),
+            Column(name='id', integer64=1),
+            Column(name='username', string='ted'),
         ],
     ),
     timestamp=Timestamp(seconds=0, nanos=0),
@@ -476,3 +479,36 @@ def test_batch_no_mutations():
     assert batch == begin.batch
     with pytest.raises(StopIteration):
         next(mutations)
+
+
+def reserialize(message):
+    # This is a hack to get around errors with oneof field initialization in a
+    # message constructor:: https://github.com/google/protobuf/issues/147
+    return type(message).FromString(message.SerializeToString())
+
+
+def test_row_conversion():
+    converter = RowConverter(sorted=True)  # maintain sort order for equality checks
+
+    row = reserialize(
+        Row(
+            columns=[
+                Column(name='active', boolean=True),
+                Column(name='biography'),
+                Column(name='id', integer64=9223372036854775807),
+                Column(name='reputation', float=1.0),
+                Column(name='username', string='bob'),
+            ],
+        ),
+    )
+
+    decoded = converter.to_python(row)
+    assert decoded == {
+        'id': 9223372036854775807,
+        'username': 'bob',
+        'active': True,
+        'reputation': 1.0,
+        'biography': None,
+    }
+
+    assert converter.to_protobuf(decoded) == row
