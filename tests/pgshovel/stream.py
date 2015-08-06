@@ -39,6 +39,8 @@ from pgshovel.stream import (
     require_different_publisher,
     require_same_batch,
     require_same_publisher,
+    to_snapshot,
+    to_timestamp,
     validate_events,
     validate_sequences,
 )
@@ -512,3 +514,25 @@ def test_row_conversion():
     }
 
     assert converter.to_protobuf(decoded) == row
+
+
+def test_snapshot_conversion():
+    assert to_snapshot('1:10:') == Snapshot(
+        min=1,
+        max=10,
+    )
+
+
+def test_snapshot_conversion_in_progress():
+    assert to_snapshot('1:10:2,3,4') == Snapshot(
+        min=1,
+        max=10,
+        active=[2, 3, 4],
+    )
+
+
+def test_timetamp_conversion():
+    assert to_timestamp(1438814328.940597) == Timestamp(
+        seconds=1438814328,
+        nanos=940597057,  # this is different due to floating point arithmetic
+    )

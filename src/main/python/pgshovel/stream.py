@@ -12,6 +12,8 @@ from pgshovel.interfaces.stream_pb2 import (
     Mutation,
     Rollback,
     Row,
+    Snapshot,
+    Timestamp,
 )
 
 
@@ -365,3 +367,19 @@ class RowConverter(object):
 
 
 row_converter = RowConverter()
+
+
+def to_timestamp(value):
+    return Timestamp(
+        seconds=int(value),
+        nanos=int((value % 1) * 1e9),
+    )
+
+
+def to_snapshot(value):
+    xmin, xmax, xip = value.split(':')
+    return Snapshot(
+        min=int(xmin),
+        max=int(xmax),
+        active=map(int, filter(None, xip.split(','))),
+    )
