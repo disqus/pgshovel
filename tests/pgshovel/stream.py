@@ -24,6 +24,7 @@ from pgshovel.stream import (
     InvalidOperation,
     InvalidPublisher,
     InvalidSequenceStartError,
+    Publisher,
     RepeatedSequenceError,
     RolledBack,
     RowConverter,
@@ -536,3 +537,62 @@ def test_timetamp_conversion():
         seconds=1438814328,
         nanos=940597057,  # this is different due to floating point arithmetic
     )
+
+
+def test_publisher():
+    messages = []
+    publisher = Publisher(messages.append)
+
+    with publisher.batch(begin.batch, start=begin.start, end=begin.end) as publish:
+        publish(
+            id=mutation.id,
+            schema=mutation.schema,
+            table=mutation.table,
+            operation=mutation.operation,
+            identity_columns=mutation.identity_columns,
+            new=mutation.new,
+            timestamp=mutation.timestamp,
+            transaction=mutation.transaction,
+        )
+
+    published_messages = map(reserialize, messages)
+
+    assert get_operation(published_messages[0]) == begin
+    assert get_operation(published_messages[1]) == mutation
+    assert get_operation(published_messages[2]) == commit
+
+    for i, message in enumerate(published_messages):
+        assert message.header.publisher == publisher.id
+        assert message.header.sequence == i
+
+    # Ensure it actually generates valid data.
+    assert list(validate_sequences(published_messages))
+    assert list(validate_events(published_messages))
+
+
+def test_publisher_failure():
+    messages = []
+    publisher = Publisher(messages.append)
+
+    with pytest.raises(NotImplementedError):
+        with publisher.batch(begin.batch, start=begin.start, end=begin.end):
+            raise NotImplementedError
+
+    published_messages = map(reserialize, messages)
+
+    assert get_operation(published_messages[0]) == begin
+    assert get_operation(published_messages[1]) == rollback
+
+    # Ensure it actually generates valid data.
+    assert list(validate_sequences(published_messages))
+    assert list(validate_events(published_messages))
+
+    for i, message in enumerate(published_messages):
+        assert message.header.publisher == publisher.id
+        assert message.header.sequence == i
+
+    # Write another message to ensure that the publisher can continue to be used.
+    assert len(messages) == 2
+    publisher.publish()
+    assert len(messages) == 3
+    assert messages[2].header.sequence == 2
