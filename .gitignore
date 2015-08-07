@@ -1,5 +1,6 @@
 *.egg*
 *.py[co]
+*_pb2.py
 .*.sw*
 .coverage
 /.xunit
