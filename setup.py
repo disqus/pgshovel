@@ -24,6 +24,8 @@ packages = {
     'msgpack-python': 'msgpack-python~=0.4',
     'protobuf': 'protobuf~=2.6',
     'psycopg2': 'psycopg2~=2.6',
+    'pytest': 'pytest~=2.7',
+    'pytest-capturelog': 'pytest-capturelog~=0.7',
     'sentry': 'raven~=5.5',
     'setuptools': 'setuptools>=8.0',
     'tabulate': 'tabulate~=0.7',
@@ -111,7 +113,7 @@ setup(
         'test': TestCommand,
     },
     tests_require=(
-        'pytest',
+        packages['pytest'],
     ),
     extras_require=extras,
 )
