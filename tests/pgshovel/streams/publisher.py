@@ -7,6 +7,7 @@ from pgshovel.streams import (
 from pgshovel.streams.batches import get_operation
 from pgshovel.streams.publisher import Publisher
 from tests.pgshovel.streams.fixtures import (
+    batch_identifier,
     begin,
     commit,
     mutation,
@@ -19,23 +20,14 @@ def test_publisher():
     messages = []
     publisher = Publisher(messages.append)
 
-    with publisher.batch(begin.batch, start=begin.start, end=begin.end) as publish:
-        publish(
-            id=mutation.id,
-            schema=mutation.schema,
-            table=mutation.table,
-            operation=mutation.operation,
-            identity_columns=mutation.identity_columns,
-            new=mutation.new,
-            timestamp=mutation.timestamp,
-            transaction=mutation.transaction,
-        )
+    with publisher.batch(batch_identifier, begin) as publish:
+        publish(mutation)
 
     published_messages = map(reserialize, messages)
 
-    assert get_operation(published_messages[0]) == begin
-    assert get_operation(published_messages[1]) == mutation
-    assert get_operation(published_messages[2]) == commit
+    assert get_operation(get_operation(published_messages[0])) == begin
+    assert get_operation(get_operation(published_messages[1])) == mutation
+    assert get_operation(get_operation(published_messages[2])) == commit
 
     for i, message in enumerate(published_messages):
         assert message.header.publisher == publisher.id
@@ -51,13 +43,13 @@ def test_publisher_failure():
     publisher = Publisher(messages.append)
 
     with pytest.raises(NotImplementedError):
-        with publisher.batch(begin.batch, start=begin.start, end=begin.end):
+        with publisher.batch(batch_identifier, begin):
             raise NotImplementedError
 
     published_messages = map(reserialize, messages)
 
-    assert get_operation(published_messages[0]) == begin
-    assert get_operation(published_messages[1]) == rollback
+    assert get_operation(get_operation(published_messages[0])) == begin
+    assert get_operation(get_operation(published_messages[1])) == rollback
 
     # Ensure it actually generates valid data.
     assert list(states.validate(published_messages))

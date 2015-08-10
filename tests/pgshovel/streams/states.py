@@ -1,7 +1,10 @@
 import itertools
-import pytest
-from collections import namedtuple
 import uuid
+from collections import namedtuple
+
+import pytest
+
+from pgshovel.streams.interfaces_pb2 import BatchOperation
 from pgshovel.streams.states import (
     Committed,
     InTransaction,
@@ -19,23 +22,23 @@ from pgshovel.streams.states import (
     validate,
 )
 from tests.pgshovel.streams.fixtures import (
-    batch,
+    batch_identifier,
     begin,
     commit,
     copy,
-    make_messages,
+    make_batch_messages,
     message,
     mutation,
 )
 
 
 def test_require_same_batch(message):
-    batch = get_operation(message).batch
+    batch_identifier = get_operation(message).batch_identifier
 
     require_same_batch(
         InTransaction(
             message.header.publisher,
-            batch,
+            batch_identifier,
         ),
         message,
     )
@@ -44,19 +47,19 @@ def test_require_same_batch(message):
         require_same_batch(
             InTransaction(
                 message.header.publisher,
-                copy(batch, id=batch.id + 1),
+                copy(batch_identifier, id=batch_identifier.id + 1),
             ),
             message,
         )
 
 
 def test_require_batch_advanced_if_same_node(message):
-    batch = get_operation(message).batch
+    batch_identifier = get_operation(message).batch_identifier
 
     require_batch_id_advanced_if_same_node(
         Committed(
             message.header.publisher,
-            copy(batch, node=uuid.uuid1().bytes),
+            copy(batch_identifier, node=uuid.uuid1().bytes),
         ),
         message,
     )
@@ -64,7 +67,7 @@ def test_require_batch_advanced_if_same_node(message):
     require_batch_id_advanced_if_same_node(
         Committed(
             message.header.publisher,
-            copy(batch, id=batch.id - 1),
+            copy(batch_identifier, id=batch_identifier.id - 1),
         ),
         message,
     )
@@ -73,19 +76,19 @@ def test_require_batch_advanced_if_same_node(message):
         require_batch_id_advanced_if_same_node(
             Committed(
                 message.header.publisher,
-                batch,
+                batch_identifier,
             ),
             message,
         )
 
 
 def test_require_batch_id_not_advanced_if_same_node(message):
-    batch = get_operation(message).batch
+    batch_identifier = get_operation(message).batch_identifier
 
     require_batch_id_not_advanced_if_same_node(
         RolledBack(
             message.header.publisher,
-            batch,
+            batch_identifier,
         ),
         message,
     )
@@ -93,7 +96,7 @@ def test_require_batch_id_not_advanced_if_same_node(message):
     require_batch_id_not_advanced_if_same_node(
         RolledBack(
             message.header.publisher,
-            copy(batch, node=uuid.uuid1().bytes),
+            copy(batch_identifier, node=uuid.uuid1().bytes),
         ),
         message,
     )
@@ -102,19 +105,19 @@ def test_require_batch_id_not_advanced_if_same_node(message):
         require_batch_id_not_advanced_if_same_node(
             RolledBack(
                 message.header.publisher,
-                copy(batch, id=batch.id + 1),
+                copy(batch_identifier, id=batch_identifier.id + 1),
             ),
             message,
         )
 
 
 def test_require_same_publisher(message):
-    batch = get_operation(message).batch
+    batch_identifier = get_operation(message).batch_identifier
 
     require_same_publisher(
         Committed(
             message.header.publisher,
-            batch,
+            batch_identifier,
         ),
         message,
     )
@@ -123,19 +126,19 @@ def test_require_same_publisher(message):
         require_same_publisher(
             Committed(
                 uuid.uuid1().bytes,
-                batch,
+                batch_identifier,
             ),
             message,
         )
 
 
 def test_require_different_publisher(message):
-    batch = get_operation(message).batch
+    batch_identifier = get_operation(message).batch_identifier
 
     require_different_publisher(
         Committed(
             uuid.uuid1().bytes,  # change the publisher
-            batch,
+            batch_identifier,
         ),
         message,
     )
@@ -144,7 +147,7 @@ def test_require_different_publisher(message):
         require_different_publisher(
             Committed(
                 message.header.publisher,
-                batch,
+                batch_identifier,
             ),
             message,
         )
@@ -194,14 +197,14 @@ def test_stateful_validator_unhandled_starting_state():
 
 
 def test_successful_transaction():
-    messages = list(make_messages([
-        {'begin': begin},
-        {'mutation': mutation},
-        {'commit': commit},
+    messages = list(make_batch_messages(batch_identifier, [
+        {'begin_operation': begin},
+        {'mutation_operation': mutation},
+        {'commit_operation': commit},
     ]))
 
     validated = validate(messages)
 
-    assert next(validated) == (InTransaction(messages[0].header.publisher, batch), messages[0])
-    assert next(validated) == (InTransaction(messages[1].header.publisher, batch), messages[1])
-    assert next(validated) == (Committed(messages[2].header.publisher, batch), messages[2])
+    assert next(validated) == (InTransaction(messages[0].header.publisher, batch_identifier), messages[0])
+    assert next(validated) == (InTransaction(messages[1].header.publisher, batch_identifier), messages[1])
+    assert next(validated) == (Committed(messages[2].header.publisher, batch_identifier), messages[2])

@@ -4,10 +4,11 @@ Tools for aiding batch consumption.
 import itertools
 
 from pgshovel.streams.interfaces_pb2 import (
-    Begin,
-    Commit,
-    Mutation,
-    Rollback,
+    BatchOperation,
+    BeginOperation,
+    CommitOperation,
+    MutationOperation,
+    RollbackOperation,
 )
 
 
@@ -63,21 +64,25 @@ def batched(messages):
     """
     def make_mutation_iterator(messages):
         for message in messages:
+            # Only batch operations are supported in this context.
             operation = get_operation(message)
+            assert isinstance(operation, BatchOperation)
 
-            if isinstance(operation, Begin):
+            operation = get_operation(operation)
+
+            if isinstance(operation, BeginOperation):
                 continue  # skip
-            elif isinstance(operation, Mutation):
+            elif isinstance(operation, MutationOperation):
                 yield operation
-            elif isinstance(operation, Commit):
+            elif isinstance(operation, CommitOperation):
                 return
-            elif isinstance(operation, Rollback):
+            elif isinstance(operation, RollbackOperation):
                 raise TransactionCancelled('Transaction rolled back.')
             else:
                 raise ValueError('Unexpected operation in transaction.')
 
         raise TransactionAborted('Unexpected end of transaction iterator.')
 
-    key = lambda (state, message): (message.header.publisher, state.batch)
-    for (publisher, batch), items in itertools.groupby(messages, key):
-        yield batch, make_mutation_iterator(i[1] for i in items)
+    key = lambda (state, message): (message.header.publisher, state.batch_identifier)
+    for (publisher, batch_identifier), items in itertools.groupby(messages, key):
+        yield batch_identifier, make_mutation_iterator(i[1] for i in items)

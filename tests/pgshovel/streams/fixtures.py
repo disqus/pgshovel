@@ -6,13 +6,14 @@ import uuid
 import pytest
 
 from pgshovel.streams.interfaces_pb2 import (
-    Batch,
-    Begin,
+    BatchIdentifier,
+    BatchOperation,
+    BeginOperation,
     Column,
-    Commit,
+    CommitOperation,
     Message,
-    Mutation,
-    Rollback,
+    MutationOperation,
+    RollbackOperation,
     Row,
     Snapshot,
     Tick,
@@ -22,10 +23,9 @@ from pgshovel.streams.interfaces_pb2 import (
 
 DEFAULT_PUBLISHER = uuid.uuid1().bytes
 
-batch = Batch(id=1, node=uuid.uuid1().bytes)
+batch_identifier = BatchIdentifier(id=1, node=uuid.uuid1().bytes)
 
-begin = Begin(
-    batch=batch,
+begin = BeginOperation(
     start=Tick(
         id=1,
         snapshot=Snapshot(min=100, max=200),
@@ -38,12 +38,11 @@ begin = Begin(
     ),
 )
 
-mutation = Mutation(
+mutation = MutationOperation(
     id=1,
-    batch=batch,
     schema='public',
     table='users',
-    operation=Mutation.INSERT,
+    operation=MutationOperation.INSERT,
     identity_columns=['id'],
     new=Row(
         columns=[
@@ -55,9 +54,9 @@ mutation = Mutation(
     transaction=1,
 )
 
-commit = Commit(batch=batch)
+commit = CommitOperation()
 
-rollback = Rollback(batch=batch)
+rollback = RollbackOperation()
 
 
 def reserialize(message):
@@ -93,6 +92,16 @@ def make_messages(payloads, publisher=DEFAULT_PUBLISHER):
         yield make_message(payload, next(sequence), publisher)
 
 
+def make_batch_messages(batch_identifier, payloads, **kwargs):
+    payloads = ({'batch_operation': BatchOperation(batch_identifier=batch_identifier, **payload)} for payload in payloads)
+    return make_messages(payloads, **kwargs)
+
+
 @pytest.yield_fixture
 def message():
-    yield make_message({'commit': commit})
+    yield make_message({
+        'batch_operation': BatchOperation(
+            batch_identifier=batch_identifier,
+            commit_operation=commit,
+        ),
+    })

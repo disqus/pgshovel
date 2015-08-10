@@ -5,10 +5,11 @@ import functools
 from collections import namedtuple
 
 from pgshovel.streams.interfaces_pb2 import (
-    Begin,
-    Commit,
-    Mutation,
-    Rollback,
+    BatchOperation,
+    BeginOperation,
+    CommitOperation,
+    MutationOperation,
+    RollbackOperation,
 )
 
 
@@ -96,20 +97,22 @@ def validate_event(validators, receiver):
 
 def require_same_batch(state, event):
     # TODO: This should probably validate the tick contents as well.
-    if state.batch != get_operation(event).batch:
+    if state.batch_identifier != get_operation(event).batch_identifier:
         raise InvalidBatch('Event batch ID must be the same as the current state.')
 
 
 def require_batch_id_advanced_if_same_node(state, event):
     # TODO: This should probably validate the tick contents as well.
     operation = get_operation(event)
-    if state.batch.node == operation.batch.node and state.batch.id >= operation.batch.id:
+    if state.batch_identifier.node == operation.batch_identifier.node and \
+            state.batch_identifier.id >= operation.batch_identifier.id:
         raise InvalidBatch('Event batch ID must be advanced from the current state.')
 
 
 def require_batch_id_not_advanced_if_same_node(state, event):
     operation = get_operation(event)
-    if state.batch.node == operation.batch.node and state.batch.id != operation.batch.id:
+    if state.batch_identifier.node == operation.batch_identifier.node and \
+            state.batch_identifier.id != operation.batch_identifier.id:
         raise InvalidBatch('Event batch ID must not be advanced from the current state.')
 
 
@@ -125,43 +128,49 @@ def require_different_publisher(state, event):
 
 # States
 
-InTransaction = namedtuple('InTransaction', 'publisher batch')
-Committed = namedtuple('Committed', 'publisher batch')
-RolledBack = namedtuple('RolledBack', 'publisher batch')
+InTransaction = namedtuple('InTransaction', 'publisher batch_identifier')
+Committed = namedtuple('Committed', 'publisher batch_identifier')
+RolledBack = namedtuple('RolledBack', 'publisher batch_identifier')
+
+
+def get_batch_operation_type(event):
+    operation = get_operation(event)
+    assert isinstance(operation, BatchOperation)
+    return type(get_operation(operation))
 
 
 validate = StatefulStreamValidator({
     None: {
-        Begin: lambda state, event: InTransaction(event.header.publisher, event.begin.batch),
+        BeginOperation: lambda state, event: InTransaction(event.header.publisher, event.batch_operation.batch_identifier),
     },
     InTransaction: {
-        Mutation: validate_event(
+        MutationOperation: validate_event(
             (require_same_publisher, require_same_batch),
-            lambda state, event: InTransaction(event.header.publisher, event.mutation.batch),
+            lambda state, event: InTransaction(event.header.publisher, event.batch_operation.batch_identifier),
         ),
-        Commit: validate_event(
+        CommitOperation: validate_event(
             (require_same_publisher, require_same_batch),
-            lambda state, event: Committed(event.header.publisher, event.commit.batch),
+            lambda state, event: Committed(event.header.publisher, event.batch_operation.batch_identifier),
         ),
-        Rollback: validate_event(
+        RollbackOperation: validate_event(
             (require_same_publisher, require_same_batch),
-            lambda state, event: RolledBack(event.header.publisher, event.rollback.batch),
+            lambda state, event: RolledBack(event.header.publisher, event.batch_operation.batch_identifier),
         ),
-        Begin: validate_event(
+        BeginOperation: validate_event(
             (require_different_publisher, require_batch_id_not_advanced_if_same_node),
-            lambda state, event: InTransaction(event.header.publisher, event.begin.batch),
+            lambda state, event: InTransaction(event.header.publisher, event.batch_operation.batch_identifier),
         ),
     },
     Committed: {
-        Begin: validate_event(
+        BeginOperation: validate_event(
             (require_same_publisher, require_batch_id_advanced_if_same_node),
-            lambda state, event: InTransaction(event.header.publisher, event.begin.batch),
+            lambda state, event: InTransaction(event.header.publisher, event.batch_operation.batch_identifier),
         ),
     },
     RolledBack: {
-        Begin: validate_event(
+        BeginOperation: validate_event(
             (require_same_publisher, require_batch_id_not_advanced_if_same_node),
-            lambda state, event: InTransaction(event.header.publisher, event.begin.batch),
+            lambda state, event: InTransaction(event.header.publisher, event.batch_operation.batch_identifier),
         ),
     }
-}, key_function=lambda event: type(get_operation(event)))
+}, key_function=get_batch_operation_type)

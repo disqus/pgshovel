@@ -8,11 +8,12 @@ import uuid
 from contextlib import contextmanager
 
 from pgshovel.streams.interfaces_pb2 import (
-    Begin,
-    Commit,
+    BatchOperation,
+    BeginOperation,
+    CommitOperation,
     Message,
-    Mutation,
-    Rollback,
+    MutationOperation,
+    RollbackOperation,
 )
 from pgshovel.streams.utilities import to_timestamp
 
@@ -52,29 +53,46 @@ class Publisher(object):
         )
 
     @contextmanager
-    def batch(self, batch, **kwargs):
+    def batch(self, batch_identifier, begin_operation):
         """
         Wraps a batch, ensuring the Begin and appropriate Commit/Rollback
         messages are sent. The context manager provides a function that can be
         used to publish mutation events that are part of the batch.
-
-        Extra keyword arguments provided to the constructor are forwarded to
-        the ``Begin`` constructor.
         """
         logger.debug('Starting transaction...')
-        self.publish(begin=Begin(batch=batch, **kwargs))
+        self.publish(
+            batch_operation=BatchOperation(
+                batch_identifier=batch_identifier,
+                begin_operation=begin_operation,
+            ),
+        )
 
-        def mutation(**kwargs):
-            return self.publish(mutation=Mutation(batch=batch, **kwargs))
+        def mutation(mutation_operation):
+            return self.publish(
+                batch_operation=BatchOperation(
+                    batch_identifier=batch_identifier,
+                    mutation_operation=mutation_operation,
+                ),
+            )
 
         try:
             yield mutation
         except Exception:
             logger.debug('Attempting to publish rollback of in progress transaction...')
-            self.publish(rollback=Rollback(batch=batch))  # TODO: Handle *this* failing.
+            self.publish(
+                batch_operation=BatchOperation(
+                    batch_identifier=batch_identifier,
+                    rollback_operation=RollbackOperation(),
+                ),
+            )
             logger.debug('Published rollback.')
             raise
         else:
             logger.debug('Attempting to publish commit of in progress transaction...')
-            self.publish(commit=Commit(batch=batch))
+            self.publish(
+                batch_operation=BatchOperation(
+                    batch_identifier=batch_identifier,
+                    commit_operation=CommitOperation(),
+                ),
+            )
             logger.debug('Published commit.')

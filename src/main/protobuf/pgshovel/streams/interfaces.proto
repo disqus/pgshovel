@@ -1,37 +1,3 @@
-message Message {
-
-    message Header {
-
-        // Unique identifier of the process that sent this message.
-        required bytes publisher = 1;
-
-        // A serial number for each message sent by this publisher. This should
-        // be increased by one for each message sent/seen. Allows ensuring all
-        // messages are seen by the consumer in order, without gaps.
-        required uint64 sequence = 2;
-
-        // When this message was generated. This is solely for debugging and
-        // monitoring purposes, such as identifying how far behind the replication
-        // stream is in seconds rather than bytes.
-        required Timestamp timestamp = 3;
-
-    }
-
-    required Header header = 1;
-
-    // Required.
-    oneof operation {
-
-        Begin begin = 2;
-        Mutation mutation = 3;
-        Commit commit = 4;
-        Rollback rollback = 5;
-
-    }
-
-}
-
-
 // http://www.postgresql.org/docs/9.3/static/functions-info.html#FUNCTIONS-TXID-SNAPSHOT-PARTS
 message Snapshot {
 
@@ -53,7 +19,7 @@ message Timestamp {
 }
 
 
-message Batch {
+message BatchIdentifier {
 
     required uint64 id = 1;
 
@@ -69,17 +35,6 @@ message Tick {
     required Snapshot snapshot = 2;
 
     required Timestamp timestamp = 3;
-
-}
-
-
-message Begin {
-
-    required Batch batch = 1;
-
-    required Tick start = 2;
-
-    required Tick end = 3;
 
 }
 
@@ -114,7 +69,61 @@ message Row {
 }
 
 
-message Mutation {
+message Message {
+
+    message Header {
+
+        // Unique identifier of the process that sent this message.
+        required bytes publisher = 1;
+
+        // A serial number for each message sent by this publisher. This should
+        // be increased by one for each message sent/seen. Allows ensuring all
+        // messages are seen by the consumer in order, without gaps.
+        required uint64 sequence = 2;
+
+        // When this message was generated. This is solely for debugging and
+        // monitoring purposes, such as identifying how far behind the replication
+        // stream is in seconds rather than bytes.
+        required Timestamp timestamp = 3;
+
+    }
+
+    required Header header = 1;
+
+    // Required.
+    oneof operation {
+
+        BatchOperation batch_operation = 2;
+
+    }
+
+}
+
+
+message BatchOperation {
+
+    required BatchIdentifier batch_identifier = 1;
+
+    // Required
+    oneof operation {
+        BeginOperation begin_operation = 2;
+        MutationOperation mutation_operation = 3;
+        CommitOperation commit_operation = 4;
+        RollbackOperation rollback_operation = 5;
+    }
+
+}
+
+message BeginOperation {
+
+    required Tick start = 1;
+
+    required Tick end = 2;
+
+}
+
+
+message MutationOperation {
 
     enum Operation {
         INSERT = 1;
@@ -124,41 +133,31 @@ message Mutation {
 
     required uint64 id = 1;
 
-    required Batch batch = 2;
+    required string schema = 2;
 
-    required string schema = 3;
+    required string table = 3;
 
-    required string table = 4;
-
-    required Operation operation = 5;
+    required Operation operation = 4;
 
     // A column names that can be used to uniquely identify this row in it's
     // table. Generally, this is the primary key(s) of the row, but could also
     // be a unique (and not null) index.
-    repeated string identity_columns = 6;
+    repeated string identity_columns = 5;
 
     // Must not exist for INSERT, but must exist for UPDATE and DELETE.
-    optional Row old = 7;
+    optional Row old = 6;
 
     // Must not exist for DELETE, but must exist for INSERT and UPDATE.
-    optional Row new = 8;
+    optional Row new = 7;
 
-    required Timestamp timestamp = 9;
+    required Timestamp timestamp = 8;
 
-    required uint64 transaction = 10;
-
-}
-
-
-message Commit {
-
-    required Batch batch = 1;
+    required uint64 transaction = 9;
 
 }
 
 
-message Rollback {
+message CommitOperation {}
 
-    required Batch batch = 1;
 
-}
+message RollbackOperation {}
