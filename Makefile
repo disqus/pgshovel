@@ -13,7 +13,7 @@ $(PYTHON_OUT):
 	mkdir -p $(PYTHON_OUT)
 
 requirements.txt: setup.py
-	python setup.py requirements -e all | sed 1d | sort > requirements.txt
+	python setup.py requirements -s 1 -e all | sed 1d | sort > requirements.txt
 
 build: requirements.txt
 	docker-compose build

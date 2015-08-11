@@ -5,7 +5,9 @@ except ImportError:
     pass
 
 import os
+import operator
 import sys
+from collections import namedtuple
 from setuptools import (
     Command,
     find_packages,
@@ -16,38 +18,59 @@ from setuptools.command.test import test
 
 PACKAGE_DIR = os.path.join('src', 'main', 'python')
 
-packages = {
-    'click': 'click~=4.0',
-    'futures': 'futures~=3.0',
-    'kafka-python': 'kafka-python~=0.9',
-    'kazoo': 'kazoo~=2.0',
-    'protobuf': 'protobuf~=2.6',
-    'psycopg2': 'psycopg2~=2.6',
-    'pytest': 'pytest~=2.7',
-    'pytest-capturelog': 'pytest-capturelog~=0.7',
-    'sentry': 'raven~=5.5',
-    'setuptools': 'setuptools>=8.0',
-    'tabulate': 'tabulate~=0.7',
-}
-
-install_requires = (
-    packages['click'],
-    packages['futures'],
-    packages['kazoo'],
-    packages['protobuf'],
-    packages['psycopg2'],
-    packages['tabulate'],
+Version = namedtuple(
+    'Version',
+    (
+        'range',  # version range, for when used as a pip installed client library
+        'strict', # strict version, for when used as a standalone service (or via docker)
+    ),
 )
 
-extras = {
-    'all': tuple(packages.values()),
+packages = {
+    'click': Version('~=4.0', '==4.1'),
+    'futures': Version('~=3.0', '==3.0.3'),
+    'kafka-python': Version('~=0.9', '==0.9.4'),
+    'kazoo': Version('~=2.0', '==2.2.1'),
+    'protobuf': Version('~=2.6', '==2.6.1'),
+    'psycopg2': Version('~=2.6', '==2.6.1'),
+    'pytest': Version('~=2.7', '==2.7.2'),
+    'pytest-capturelog': Version('~=0.7', '==0.7'),
+    'raven': Version('~=5.5', '==5.5.0'),
+    'setuptools': Version('>=8.0', '==18.1'),
+    'tabulate': Version('~=0.7', '==0.7.5'),
+}
+
+setup_requires = (
+    'setuptools',
+)
+
+install_requires = (
+    'click',
+    'futures',
+    'kazoo',
+    'protobuf',
+    'psycopg2',
+    'tabulate',
+)
+
+extras_require = {
+    'all': packages.keys(),
     'kafka': (
-        packages['kafka-python'],
+        'kafka-python',
     ),
     'sentry': (
-        packages['sentry'],
+        'raven',
     ),
 }
+
+tests_require = (
+    'pytest',
+)
+
+
+def requirements(names, strict=False):
+    get_version = operator.attrgetter('strict' if strict else 'range')
+    return [''.join((name, get_version(packages[name]))) for name in names]
 
 
 class TestCommand(test):
@@ -69,28 +92,32 @@ class TestCommand(test):
 
 
 class RequirementsCommand(Command):
-    user_options = [('extras=', 'e', 'name of extras')]
+    user_options = [
+        ('extras=', 'e', 'name of extras'),
+        ('strict=', 's', 'strict'),
+    ]
 
     def initialize_options(self):
         self.extras = None
+        self.strict = False
 
     def finalize_options(self):
-        if self.extras is not None and self.extras not in extras:
+        if self.extras is not None and self.extras not in extras_require:
             raise ValueError('Invalid name of extras group, must be one of {0!r}'.format(extras.keys()))
 
+        self.strict = bool(self.strict)
+
     def run(self):
-        requirements = extras[self.extras] if self.extras is not None else install_requires
-        for requirement in requirements:
+        names = extras_require[self.extras] if self.extras is not None else install_requires
+        for requirement in requirements(names, self.strict):
             sys.stdout.write('{0}\n'.format(requirement))
 
 
 setup(
     name='pgshovel',
     version='0.3.0-dev',
-    setup_requires=(
-        packages['setuptools'],
-    ),
-    install_requires=install_requires,
+    setup_requires=requirements(setup_requires),
+    install_requires=requirements(install_requires),
     entry_points={
         'console_scripts': [
             'pgshovel = pgshovel.cli:__main__',
@@ -103,13 +130,11 @@ setup(
     package_dir={
         '': PACKAGE_DIR,
     },
-    classifiers=['Private :: Do Not Upload'],
     cmdclass = {
         'requirements': RequirementsCommand,
         'test': TestCommand,
     },
-    tests_require=(
-        packages['pytest'],
-    ),
-    extras_require=extras,
+    tests_require=requirements(tests_require),
+    extras_require=dict((key, requirements(values)) for key, values in extras_require.items()),
+    license='Apache License 2.0',
 )
