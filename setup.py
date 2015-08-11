@@ -33,6 +33,7 @@ packages = {
     'kazoo': Version('~=2.0', '==2.2.1'),
     'protobuf': Version('~=2.6', '==2.6.1'),
     'psycopg2': Version('~=2.6', '==2.6.1'),
+    'psycopg2-managed-connection': Version('~=1.0', '==1.0.0'),
     'pytest': Version('~=2.7', '==2.7.2'),
     'pytest-capturelog': Version('~=0.7', '==0.7'),
     'raven': Version('~=5.5', '==5.5.0'),
@@ -50,6 +51,7 @@ install_requires = (
     'kazoo',
     'protobuf',
     'psycopg2',
+    'psycopg2-managed-connection',
     'tabulate',
 )
 

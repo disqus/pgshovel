@@ -2,10 +2,9 @@ import logging
 import uuid
 from contextlib import contextmanager
 
-from pgshovel.utilities.postgresql import (
-    ManagedConnection,
-    quote,
-)
+from pgmanagedconnection import ManagedConnection
+
+from pgshovel.utilities.postgresql import quote
 
 
 logger = logging.getLogger(__name__)
