@@ -208,3 +208,7 @@ def test_successful_transaction():
     assert next(validated) == (InTransaction(messages[0].header.publisher, batch_identifier), messages[0])
     assert next(validated) == (InTransaction(messages[1].header.publisher, batch_identifier), messages[1])
     assert next(validated) == (Committed(messages[2].header.publisher, batch_identifier), messages[2])
+
+
+# TODO: Add test to ensure that {Committed,RolledBack} can transition to
+# InTransaction after a publisher change.

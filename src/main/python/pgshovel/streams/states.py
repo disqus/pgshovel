@@ -163,13 +163,13 @@ validate = StatefulStreamValidator({
     },
     Committed: {
         BeginOperation: validate_event(
-            (require_same_publisher, require_batch_id_advanced_if_same_node),
+            (require_batch_id_advanced_if_same_node,),
             lambda state, event: InTransaction(event.header.publisher, event.batch_operation.batch_identifier),
         ),
     },
     RolledBack: {
         BeginOperation: validate_event(
-            (require_same_publisher, require_batch_id_not_advanced_if_same_node),
+            (require_batch_id_not_advanced_if_same_node,),
             lambda state, event: InTransaction(event.header.publisher, event.batch_operation.batch_identifier),
         ),
     }
