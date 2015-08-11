@@ -18,7 +18,7 @@ def test_workflows(cluster):
     replica_dsn = create_temporary_database('replica')
 
     replication_set = ReplicationSetConfiguration()
-    replication_set.databases.add(dsn=primary_dsn)
+    replication_set.database.dsn = primary_dsn
     replication_set.tables.add(
         name='auth_user',
         primary_keys=['id'],
@@ -27,7 +27,7 @@ def test_workflows(cluster):
     with cluster:
         create_set(cluster, 'example', replication_set)
 
-        replication_set.databases.add(dsn=replica_dsn)
+        replication_set.database.dsn = replica_dsn
         replication_set.tables.add(
             name='accounts_userprofile',
             primary_keys=['id'],
@@ -38,7 +38,6 @@ def test_workflows(cluster):
         upgrade_cluster(cluster, force=True)
 
         del replication_set.tables[0]
-        del replication_set.databases[0]
         update_set(cluster, 'example', replication_set)
 
         drop_set(cluster, 'example')

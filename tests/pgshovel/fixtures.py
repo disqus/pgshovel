@@ -9,10 +9,6 @@ from kazoo.client import KazooClient
 
 from pgshovel.administration import initialize_cluster
 from pgshovel.cluster import Cluster
-from pgshovel.testing import (
-    BatchBuilder,
-    EventBuilder,
-)
 
 
 DEFAULT_SCHEMA = """\
@@ -59,14 +55,3 @@ def create_temporary_database(prefix='test', schema=DEFAULT_SCHEMA):
 
 def generate_random_string(length, characters=string.letters + string.digits):
     return ''.join(random.choice(characters) for _ in xrange(length))
-
-
-batch_builder = BatchBuilder((
-    EventBuilder(
-        'auth_user',
-        lambda: {
-            'id': random.randint(0, 1e7),
-            'username': generate_random_string(10),
-        },
-    ),
-))

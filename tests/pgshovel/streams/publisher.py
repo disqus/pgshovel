@@ -18,7 +18,7 @@ from tests.pgshovel.streams.fixtures import (
 
 def test_publisher():
     messages = []
-    publisher = Publisher(messages.append)
+    publisher = Publisher(messages.extend)
 
     with publisher.batch(batch_identifier, begin) as publish:
         publish(mutation)
@@ -40,7 +40,7 @@ def test_publisher():
 
 def test_publisher_failure():
     messages = []
-    publisher = Publisher(messages.append)
+    publisher = Publisher(messages.extend)
 
     with pytest.raises(NotImplementedError):
         with publisher.batch(batch_identifier, begin):

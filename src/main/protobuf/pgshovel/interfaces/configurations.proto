@@ -29,8 +29,8 @@ message DatabaseConfiguration {
 
 message ReplicationSetConfiguration {
 
-    // The databases where this replication setresides.
-    repeated DatabaseConfiguration databases = 1;
+    // The database where this replication set resides.
+    required DatabaseConfiguration database = 1;
 
     // The tables within this replication set.
     repeated TableConfiguration tables = 2;

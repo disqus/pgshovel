@@ -27,8 +27,12 @@ pgshovel:
     build: .
     entrypoint: ['pgshovel']
     environment:
-        PYTHONDONTWRITEBYTECODE: 1
+        PGHOST: postgres
+        PGSHOVEL_KAFKA_HOSTS: kafka
         PGSHOVEL_ZOOKEEPER_HOSTS: zookeeper
+        PGUSER: postgres
+        PYTHONDONTWRITEBYTECODE: 1
+        PYTHONUNBUFFERED: 1
     links:
         - kafka
         - postgres

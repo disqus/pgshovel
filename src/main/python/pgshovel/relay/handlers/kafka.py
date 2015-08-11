@@ -1,22 +1,3 @@
-"""
-.. caution::
-
-    The default Kafka broker configuration (for 0.8, at time of writing) has
-    maximum message size of 1 MB (``message.max.bytes`` property).
-
-    Having too low of a value for this setting can lead to rejected publishes
-    (and halted replication) if or when the size of a ``MutationBatch`` exceeds
-    the maximum message size accepted by the broker. This can be particularly
-    problematic when dealing with very active workloads, or data sets that have
-    very large rows.
-
-    In addition to tuning the ``message.max.bytes`` size for your particular
-    workload, it is beneficial to adjust the queue configuration located in the
-    ``pgq.queue`` table -- specifically the ``queue_ticker_max_count`` and
-    ``queue_ticker_max_lag`` keys -- to encourage smaller and more frequently
-    generated batches.
-
-"""
 from __future__ import absolute_import
 
 import functools
@@ -24,9 +5,10 @@ import threading
 
 import click
 
-from pgshovel.relay import relay_entrypoint
+from pgshovel.relay.entrypoint import entrypoint
+from pgshovel.streams.interfaces_pb2 import Message
 from pgshovel.utilities import import_extras
-from pgshovel.utilities.commands import LoadPathType
+from pgshovel.utilities.protobuf import BinaryCodec
 
 with import_extras('kafka'):
     from kafka.client import KafkaClient
@@ -38,6 +20,8 @@ class KafkaWriter(object):
         self.producer = producer
         self.topic = topic
         self.codec = codec
+
+        # TODO: Might not need to be thread safe any more?
         self.__lock = threading.Lock()
 
         self.producer.client.ensure_topic_exists(topic)
@@ -52,9 +36,9 @@ class KafkaWriter(object):
             [':'.join(map(str, h)) for h in self.producer.client.hosts]
         )
 
-    def push(self, batch):
+    def push(self, messages):
         with self.__lock:  # TODO: ensure this is required, better safe than sorry
-            self.producer.send_messages(self.topic, self.codec.encode(batch))
+            self.producer.send_messages(self.topic, *map(self.codec.encode, messages))
 
 
 @click.command(
@@ -70,21 +54,15 @@ class KafkaWriter(object):
     default='{cluster}.{set}.mutations',
     help="Destination Topic for mutation batch publishing.",
 )
-@click.option(
-    '--codec',
-    type=LoadPathType(),
-    default='pgshovel.codecs:json',
-    help="Codec used when encoding batches for publishing.",
-)
-@relay_entrypoint
-def main(cluster, set, kafka_hosts, kafka_topic, codec):
+@entrypoint
+def main(cluster, set, kafka_hosts, kafka_topic):
     client = KafkaClient(kafka_hosts)
     producer = SimpleProducer(client)
     topic = kafka_topic.format(cluster=cluster.name, set=set)
-    return KafkaWriter(producer, topic, codec)
+    return KafkaWriter(producer, topic, BinaryCodec(Message))
 
 
-__main__ = functools.partial(
-    main,
-    auto_envvar_prefix='PGSHOVEL',
-)
+__main__ = functools.partial(main, auto_envvar_prefix='PGSHOVEL')
+
+if __name__ == '__main__':
+    __main__()

@@ -2,7 +2,6 @@ click~=4.0
 futures~=3.0
 kafka-python~=0.9
 kazoo~=2.0
-msgpack-python~=0.4
 protobuf~=2.6
 psycopg2~=2.6
 pytest-capturelog~=0.7

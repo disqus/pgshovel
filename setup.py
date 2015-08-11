@@ -21,7 +21,6 @@ packages = {
     'futures': 'futures~=3.0',
     'kafka-python': 'kafka-python~=0.9',
     'kazoo': 'kazoo~=2.0',
-    'msgpack-python': 'msgpack-python~=0.4',
     'protobuf': 'protobuf~=2.6',
     'psycopg2': 'psycopg2~=2.6',
     'pytest': 'pytest~=2.7',
@@ -44,9 +43,6 @@ extras = {
     'all': tuple(packages.values()),
     'kafka': (
         packages['kafka-python'],
-    ),
-    'msgpack': (
-        packages['msgpack-python'],
     ),
     'sentry': (
         packages['sentry'],
@@ -98,8 +94,8 @@ setup(
     entry_points={
         'console_scripts': [
             'pgshovel = pgshovel.cli:__main__',
-            'pgshovel-kafka-relay = pgshovel.contrib.kafka:__main__ [kafka]',
-            'pgshovel-stream-relay = pgshovel.relay:__main__',
+            'pgshovel-kafka-relay = pgshovel.relay.handlers.kafka:__main__ [kafka]',
+            'pgshovel-stream-relay = pgshovel.relay.handlers.stream:__main__',
         ],
     },
     include_package_data=True,

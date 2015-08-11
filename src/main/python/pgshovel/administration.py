@@ -331,15 +331,6 @@ def fetch_sets(cluster, names=None):
 
 
 def validate_set_configuration(configuration):
-    assert len(configuration.databases) > 0, 'set must have associated databases'
-
-    # TODO: It might make sense to normalize the database dsns here just to be
-    # doubly safe.
-    dsns = set()
-    for database in configuration.databases:
-        assert database.dsn not in dsns, 'duplicate databases not allowed: %s' % (database.dsn,)
-        dsns.add(database.dsn)
-
     for table in configuration.tables:
         assert len(table.primary_keys) > 0, 'table %s.%s must have associated primary key column(s)' % (quote(table.schema), quote(table.name),)
 
@@ -413,8 +404,7 @@ def upgrade_cluster(cluster, force=False):
     # collect databases
     databases = set()
     for s, (configuration, stat) in fetch_sets(cluster):
-        for database in configuration.databases:
-            databases.add(database.dsn)
+        databases.add(configuration.database.dsn)
 
         # TODO: not entirely sure that this is necessary, but can't hurt
         ztransaction.check(cluster.get_set_path(s), version=stat.version)
@@ -443,7 +433,7 @@ def create_set(cluster, name, configuration):
 
     validate_set_configuration(configuration)
 
-    databases = get_managed_databases(cluster, [d.dsn for d in configuration.databases])
+    databases = get_managed_databases(cluster, (configuration.database.dsn,))
 
     ztransaction = check_version(cluster)
 
@@ -472,12 +462,11 @@ def update_set(cluster, name, updated_configuration, allow_forced_removal=False)
     (name, (current_configuration, stat)) = fetch_sets(cluster, (name,))[0]
 
     # TODO: It probably makes sense to normalize the database URIs here.
-    current_databases = set(d.dsn for d in current_configuration.databases)
-    updated_databases = set(d.dsn for d in updated_configuration.databases)
+    current_databases = set((current_configuration.database.dsn,))
+    updated_databases = set((updated_configuration.database.dsn,))
 
     additions = get_managed_databases(cluster, updated_databases - current_databases)
     mutations = get_managed_databases(cluster, updated_databases & current_databases)
-
     deletions = get_managed_databases(
         cluster,
         current_databases - updated_databases,
@@ -536,7 +525,7 @@ def drop_set(cluster, name, allow_forced_removal=False):
 
     deletions = get_managed_databases(
         cluster,
-        [d.dsn for d in configuration.databases],
+        (configuration.database.dsn,),
         configure=False,
         skip_inaccessible=allow_forced_removal,
     )

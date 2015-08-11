@@ -41,7 +41,7 @@ class Publisher(object):
         self.sequence = itertools.count(0)
 
     def publish(self, **kwargs):
-        self.receiver(
+        self.receiver((
             Message(
                 header=Message.Header(
                     publisher=self.id,
@@ -50,7 +50,7 @@ class Publisher(object):
                 ),
                 **kwargs
             ),
-        )
+        ))
 
     @contextmanager
     def batch(self, batch_identifier, begin_operation):

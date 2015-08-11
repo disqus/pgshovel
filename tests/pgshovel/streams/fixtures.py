@@ -97,6 +97,13 @@ def make_batch_messages(batch_identifier, payloads, **kwargs):
     return make_messages(payloads, **kwargs)
 
 
+transaction = make_batch_messages(batch_identifier, (
+    {'begin_operation': begin},
+    {'mutation_operation': mutation},
+    {'commit_operation': commit},
+))
+
+
 @pytest.yield_fixture
 def message():
     yield make_message({

@@ -60,7 +60,7 @@ def list(cluster):
         for name, (configuration, stat) in administration.fetch_sets(cluster):
             rows.append((
                 name,
-                ', '.join(d.dsn for d in configuration.databases),
+                configuration.database.dsn,
                 FormattedSequence([t.name for t in configuration.tables]),
                 administration.get_version(configuration),
             ))
