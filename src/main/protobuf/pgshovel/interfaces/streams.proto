@@ -1,0 +1,98 @@
+package pgshovel.interfaces.streams;
+
+import "pgshovel/interfaces/common.proto";
+
+
+message Header {
+
+    // Unique identifier of the process that sent this message.
+    required bytes publisher = 1;
+
+    // A serial number for each message sent by this publisher. This should
+    // be increased by one for each message sent/seen. Allows ensuring all
+    // messages are seen by the consumer in order, without gaps.
+    required uint64 sequence = 2;
+
+    // When this message was generated. This is solely for debugging and
+    // monitoring purposes, such as identifying how far behind the replication
+    // stream is in seconds rather than bytes.
+    required common.Timestamp timestamp = 3;
+
+}
+
+
+message Message {
+
+    required Header header = 1;
+
+    // Required.
+    oneof operation {
+
+        BatchOperation batch_operation = 2;
+
+    }
+
+}
+
+
+message BatchOperation {
+
+    required common.BatchIdentifier batch_identifier = 1;
+
+    // Required
+    oneof operation {
+        BeginOperation begin_operation = 2;
+        MutationOperation mutation_operation = 3;
+        CommitOperation commit_operation = 4;
+        RollbackOperation rollback_operation = 5;
+    }
+
+}
+
+message BeginOperation {
+
+    required common.Tick start = 1;
+
+    required common.Tick end = 2;
+
+}
+
+
+message MutationOperation {
+
+    enum Operation {
+        INSERT = 1;
+        UPDATE = 2;
+        DELETE = 3;
+    }
+
+    required uint64 id = 1;
+
+    required string schema = 2;
+
+    required string table = 3;
+
+    required Operation operation = 4;
+
+    // A column names that can be used to uniquely identify this row in it's
+    // table. Generally, this is the primary key(s) of the row, but could also
+    // be a unique (and not null) index.
+    repeated string identity_columns = 5;
+
+    // Must not exist for INSERT, but must exist for UPDATE and DELETE.
+    optional common.Row old = 6;
+
+    // Must not exist for DELETE, but must exist for INSERT and UPDATE.
+    optional common.Row new = 7;
+
+    required common.Timestamp timestamp = 8;
+
+    required uint64 transaction = 9;
+
+}
+
+
+message CommitOperation {}
+
+
+message RollbackOperation {}

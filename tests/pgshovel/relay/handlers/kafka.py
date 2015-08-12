@@ -3,8 +3,8 @@ from __future__ import absolute_import
 import operator
 import uuid
 
+from pgshovel.interfaces.streams_pb2 import Message
 from pgshovel.relay.handlers.kafka import KafkaWriter
-from pgshovel.streams.interfaces_pb2 import Message
 from pgshovel.utilities import import_extras
 from pgshovel.utilities.protobuf import BinaryCodec
 from tests.pgshovel.streams.fixtures import transaction

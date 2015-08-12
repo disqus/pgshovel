@@ -2,9 +2,10 @@ import uuid
 
 import pytest
 
-from pgshovel.streams.interfaces_pb2 import (
+from pgshovel.interfaces.common_pb2 import Timestamp
+from pgshovel.interfaces.streams_pb2 import (
+    Header,
     Message,
-    Timestamp,
 )
 from pgshovel.streams.sequences import (
     InvalidPublisher,
@@ -19,7 +20,7 @@ timestamp = Timestamp(seconds=0, nanos=0)
 
 
 def build_header(sequence, publisher=uuid.uuid1().bytes, timestamp=timestamp):
-    return Message.Header(
+    return Header(
         publisher=publisher,
         sequence=sequence,
         timestamp=timestamp,

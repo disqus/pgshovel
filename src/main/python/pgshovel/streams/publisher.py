@@ -7,15 +7,16 @@ import time
 import uuid
 from contextlib import contextmanager
 
-from pgshovel.streams.interfaces_pb2 import (
+from pgshovel.interfaces.streams_pb2 import (
     BatchOperation,
     BeginOperation,
     CommitOperation,
+    Header,
     Message,
     MutationOperation,
     RollbackOperation,
 )
-from pgshovel.streams.utilities import to_timestamp
+from pgshovel.utilities.conversions import to_timestamp
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class Publisher(object):
     def publish(self, **kwargs):
         self.receiver((
             Message(
-                header=Message.Header(
+                header=Header(
                     publisher=self.id,
                     sequence=next(self.sequence),
                     timestamp=to_timestamp(time.time()),

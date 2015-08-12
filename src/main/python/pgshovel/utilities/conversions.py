@@ -1,6 +1,6 @@
 import numbers
 
-from pgshovel.streams.interfaces_pb2 import (
+from pgshovel.interfaces.common_pb2 import (
     Column,
     Row,
     Snapshot,

@@ -5,19 +5,22 @@ import uuid
 
 import pytest
 
-from pgshovel.streams.interfaces_pb2 import (
+from pgshovel.interfaces.common_pb2 import (
     BatchIdentifier,
-    BatchOperation,
-    BeginOperation,
     Column,
-    CommitOperation,
-    Message,
-    MutationOperation,
-    RollbackOperation,
     Row,
     Snapshot,
     Tick,
     Timestamp,
+)
+from pgshovel.interfaces.streams_pb2 import (
+    BatchOperation,
+    BeginOperation,
+    CommitOperation,
+    Header,
+    Message,
+    MutationOperation,
+    RollbackOperation,
 )
 
 
@@ -75,7 +78,7 @@ def copy(message, **replacements):
 def make_message(payload, sequence=1, publisher=DEFAULT_PUBLISHER):
     return reserialize(
         Message(
-            header=Message.Header(
+            header=Header(
                 publisher=publisher,
                 sequence=sequence,
                 timestamp=Timestamp(seconds=0, nanos=0),

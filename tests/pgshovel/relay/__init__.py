@@ -8,20 +8,22 @@ import psycopg2
 import pytest
 
 from pgshovel.administration import create_set
+from pgshovel.interfaces.common_pb2 import (
+    Column,
+    Row,
+)
 from pgshovel.interfaces.configurations_pb2 import ReplicationSetConfiguration
+from pgshovel.interfaces.streams_pb2 import (
+    BeginOperation,
+    CommitOperation,
+    MutationOperation,
+    RollbackOperation,
+)
 from pgshovel.relay.relay import (
     Relay,
     Worker,
 )
 from pgshovel.streams.batches import get_operation
-from pgshovel.streams.interfaces_pb2 import (
-    BeginOperation,
-    Column,
-    CommitOperation,
-    MutationOperation,
-    RollbackOperation,
-    Row,
-)
 from tests.pgshovel.fixtures import (
     cluster,
     create_temporary_database,

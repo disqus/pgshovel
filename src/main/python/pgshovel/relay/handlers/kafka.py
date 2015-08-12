@@ -5,8 +5,8 @@ import threading
 
 import click
 
+from pgshovel.interfaces.streams_pb2 import Message
 from pgshovel.relay.entrypoint import entrypoint
-from pgshovel.streams.interfaces_pb2 import Message
 from pgshovel.utilities import import_extras
 from pgshovel.utilities.protobuf import BinaryCodec
 

@@ -4,7 +4,7 @@ import threading
 
 import click
 
-from pgshovel.interfaces.stream_pb2 import Message
+from pgshovel.interfaces.streams_pb2 import Message
 from pgshovel.relay.entrypoint import entrypoint
 from pgshovel.utilities.protobuf import TextCodec
 

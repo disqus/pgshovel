@@ -1,0 +1,72 @@
+package pgshovel.interfaces.common;
+
+
+// http://www.postgresql.org/docs/9.3/static/functions-info.html#FUNCTIONS-TXID-SNAPSHOT-PARTS
+message Snapshot {
+
+    required uint64 min = 1;
+
+    required uint64 max = 2;
+
+    repeated uint64 active = 3;
+
+}
+
+// https://github.com/google/protobuf/blob/master/src/google/protobuf/timestamp.proto#L95-L106
+message Timestamp {
+
+  required int64 seconds = 1;
+
+  required int32 nanos = 2;
+
+}
+
+
+message BatchIdentifier {
+
+    required uint64 id = 1;
+
+    required bytes node = 2;
+
+}
+
+// https://github.com/markokr/skytools/blob/master/sql/pgq/structure/tables.sql#L102-L124
+message Tick {
+
+    required uint64 id = 1;
+
+    required Snapshot snapshot = 2;
+
+    required Timestamp timestamp = 3;
+
+}
+
+
+message Column {
+
+    // Should be unique.
+    required string name = 1;
+
+    // Not required. (Values that are not present are `NULL`/`None`.)
+    // This follows the same conversion rules as PL/Python:
+    // http://www.postgresql.org/docs/9.3/static/plpython-data.html
+    oneof value {
+
+        bool boolean = 2;
+        int64 integer64 = 3;
+        float float = 4;
+
+        // TODO: This needs to ensure that strings are transcoded from
+        // the server encoding to UTF-8.
+        string string = 5;  // UTF-8
+
+    }
+
+}
+
+
+message Row {
+
+    repeated Column columns = 1;
+
+}

@@ -1,10 +1,10 @@
-from pgshovel.streams.interfaces_pb2  import (
+from pgshovel.interfaces.common_pb2 import (
     Column,
     Row,
     Snapshot,
     Timestamp,
 )
-from pgshovel.streams.utilities import (
+from pgshovel.utilities.conversions import (
     RowConverter,
     to_snapshot,
     to_timestamp,

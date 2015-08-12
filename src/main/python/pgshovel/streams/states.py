@@ -4,7 +4,7 @@ Tools for validating input streams.
 import functools
 from collections import namedtuple
 
-from pgshovel.streams.interfaces_pb2 import (
+from pgshovel.interfaces.streams_pb2 import (
     BatchOperation,
     BeginOperation,
     CommitOperation,

@@ -19,20 +19,22 @@ from kazoo.recipe.watchers import DataWatch
 
 from pgshovel import __version__
 from pgshovel.database import ManagedDatabase
-from pgshovel.interfaces.configurations_pb2 import (
-    ClusterConfiguration,
-    ReplicationSetConfiguration,
-)
-from pgshovel.streams.interfaces_pb2 import (
+from pgshovel.interfaces.common_pb2 import (
     BatchIdentifier,
-    BeginOperation,
-    MutationOperation,
     Snapshot,
     Tick,
     Timestamp,
 )
+from pgshovel.interfaces.configurations_pb2 import (
+    ClusterConfiguration,
+    ReplicationSetConfiguration,
+)
+from pgshovel.interfaces.streams_pb2 import (
+    BeginOperation,
+    MutationOperation,
+)
 from pgshovel.streams.publisher import Publisher
-from pgshovel.streams.utilities import (
+from pgshovel.utilities.conversions import (
     row_converter,
     to_snapshot,
     to_timestamp,

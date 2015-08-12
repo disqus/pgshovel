@@ -1,3 +1,6 @@
+package pgshovel.interfaces.configurations;
+
+
 message ClusterConfiguration {
 
     required string version = 1;

@@ -3,7 +3,7 @@ Tools for aiding batch consumption.
 """
 import itertools
 
-from pgshovel.streams.interfaces_pb2 import (
+from pgshovel.interfaces.streams_pb2 import (
     BatchOperation,
     BeginOperation,
     CommitOperation,

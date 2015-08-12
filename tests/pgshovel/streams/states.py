@@ -4,7 +4,7 @@ from collections import namedtuple
 
 import pytest
 
-from pgshovel.streams.interfaces_pb2 import BatchOperation
+from pgshovel.interfaces.streams_pb2 import BatchOperation
 from pgshovel.streams.states import (
     Committed,
     InTransaction,
