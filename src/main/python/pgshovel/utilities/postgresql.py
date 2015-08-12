@@ -102,3 +102,11 @@ def managed(transactions):
     # transactions.
     for transaction in prepared:
         transaction.commit()
+
+
+def txid_visible_in_snapshot(txid, snapshot):
+    if txid < snapshot.min:
+        return True
+    elif txid >= snapshot.max:
+        return False
+    return txid not in set(snapshot.active)

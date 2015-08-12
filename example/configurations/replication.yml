@@ -1,0 +1,12 @@
+loader:
+    path: pgshovel.replication.loaders.simple:SimpleLoader
+
+stream:
+    path: pgshovel.replication.streams.kafka:KafkaStream
+    configuration:
+        hosts: kafka
+
+target:
+    path: pgshovel.replication.targets.postgresql:PostgreSQLTarget
+    configuration:
+        dsn: postgres:///destination

@@ -60,6 +60,20 @@ def create_configuration_table(cluster, cursor):
     cursor.execute(statement)
 
 
+INSTALL_REPLICATION_STATE_TABLE_STATEMENT_TEMPLATE = """\
+CREATE TABLE IF NOT EXISTS {schema}.replication_state (
+    set varchar PRIMARY KEY,
+    state bytea
+)
+"""
+
+def create_replication_state_table(cluster, cursor):
+    statement = INSTALL_REPLICATION_STATE_TABLE_STATEMENT_TEMPLATE.format(
+        schema=quote(cluster.schema),
+    )
+    cursor.execute(statement)
+
+
 INSTALL_LOG_TRIGGER_STATEMENT_TEMPLATE = """\
 CREATE OR REPLACE FUNCTION {schema}.log()
 RETURNS trigger
@@ -109,6 +123,10 @@ def setup_database(cluster, cursor):
     # Create the configuration table if it doesn't already exist.
     logger.info('Creating configuration table (if it does not already exist)...')
     create_configuration_table(cluster, cursor)
+
+    # Create the replication state table if it doesn't already exist.
+    logger.info('Creating replication state table (if it does not already exist)...')
+    create_replication_state_table(cluster, cursor)
 
     version = get_configuration_value(cluster, cursor, 'version')
     if version is None:

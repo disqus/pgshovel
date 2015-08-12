@@ -1,3 +1,4 @@
+import functools
 import os
 import signal
 import uuid
@@ -23,7 +24,7 @@ from pgshovel.relay.relay import (
     Relay,
     Worker,
 )
-from pgshovel.streams.batches import get_operation
+from pgshovel.utilities.protobuf import get_oneof_value
 from tests.pgshovel.fixtures import (
     cluster,
     create_temporary_database,
@@ -74,6 +75,9 @@ def get_events(queue, n):
     for _ in xrange(n):
         events.append(queue.get(True, 1))
     return events
+
+
+get_operation = functools.partial(get_oneof_value, label='operation')
 
 
 def assert_same_batch(events):

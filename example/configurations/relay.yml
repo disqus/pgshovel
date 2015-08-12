@@ -1,0 +1,4 @@
+stream:
+    path: pgshovel.relay.streams.kafka:KafkaWriter
+    configuration:
+        hosts: kafka

@@ -39,6 +39,8 @@ Relay
 The relay consumes batches of mutations for the replication set and forwards
 those mutation batches to their destination.
 
+.. todo:: Document replication worker, loader, target.
+
 Usage
 =====
 
@@ -62,53 +64,45 @@ Creating a Cluster
 
 ::
 
-    pgshovel cluster initialize
+    pgshovel-admin cluster initialize
 
 ::
 
-    pgshovel set create example /path/to/configuration.pgshovel
+    pgshovel-admin set create example /path/to/configuration.pgshovel
 
 ::
 
-    pgshovel set list
+    pgshovel-admin set list
 
 ::
 
-    pgshovel set inspect example
+    pgshovel-admin set inspect example
 
 Running a Relay
 ---------------
 
 ::
 
-    pgshovel-kafka-relay example
+    pgshovel-relay configuration.yml example
 
 Updating a Replication Set
 --------------------------
 
 ::
 
-    pgshovel set upgrade /path/to/configuration.pgshovel
+    pgshovel-admin set upgrade /path/to/configuration.pgshovel
 
 Dropping a Replication Set
 --------------------------
 
 ::
 
-    pgshovel set drop example
+    pgshovel-admin set drop example
 
 Configuration
 =============
 
-The execution environment can be controlled in two ways: command line flags and
-environment variables. There is a small set of configuration parameters that
-are available on every command (``pgshovel --help``), while the remainder are
-distinct on a command basis.
-
-All command options can also be defined as environment variables. To translate
-an option to an environment variable, prefix the option name with
-``PGSHOVEL_``, uppercase the label, and convert all dashes to underscores. For
-example, ``--zookeeper-hosts`` becomes ``PGSHOVEL_ZOOKEEPER_HOSTS``.
+.. todo:: Rewrite with config file
 
 Operations
 ==========

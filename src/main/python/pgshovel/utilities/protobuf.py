@@ -1,6 +1,14 @@
 from google.protobuf.text_format import Merge
 
 
+def get_oneof_value(message, label):
+    attribute = message.WhichOneof(label)
+    if attribute is None:
+        return None
+
+    return getattr(message, attribute)
+
+
 class BinaryCodec(object):
     def __init__(self, cls):
         self.cls = cls

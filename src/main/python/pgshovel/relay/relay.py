@@ -34,6 +34,7 @@ from pgshovel.interfaces.streams_pb2 import (
     MutationOperation,
 )
 from pgshovel.streams.publisher import Publisher
+from pgshovel.streams.utilities import FormattedBatchIdentifier
 from pgshovel.utilities.conversions import (
     row_converter,
     to_snapshot,
@@ -93,7 +94,7 @@ def to_mutation(row):
 
 
 class Worker(threading.Thread):
-    def __init__(self, cluster, dsn, set, consumer, handler):
+    def __init__(self, cluster, dsn, set, consumer, stream):
         super(Worker, self).__init__(name=dsn)
         self.daemon = True
 
@@ -101,7 +102,7 @@ class Worker(threading.Thread):
         self.database = ManagedDatabase(cluster, dsn)
         self.set = set
         self.consumer = consumer
-        self.handler = handler
+        self.stream = stream
 
         self.__stop_requested = threading.Event()
 
@@ -109,7 +110,7 @@ class Worker(threading.Thread):
         self.__result.set_running_or_notify_cancel()  # cannot be cancelled
 
     def run(self):
-        publisher = Publisher(self.handler.push)
+        publisher = Publisher(self.stream.push)
 
         try:
             logger.debug('Started worker.')
@@ -173,6 +174,7 @@ class Worker(threading.Thread):
                             statement = "SELECT ev_id, ev_data, extract(epoch from ev_time), ev_txid FROM pgq.get_batch_events(%s)"
                             cursor.execute(statement, (batch_id,))
 
+                            # TODO: Publish these in chunks, the full ack + RTT is a performance killer
                             for mutation in itertools.imap(to_mutation, cursor):
                                 publish(mutation)
 
@@ -190,7 +192,7 @@ class Worker(threading.Thread):
                     # a metadata table before starting to apply a batch.
                     connection.commit()
 
-                    logger.debug('Successfully relayed batch %s.', batch)
+                    logger.debug('Successfully relayed batch: %s.', FormattedBatchIdentifier(batch))
 
         except Exception as error:
             logger.exception('Caught exception in worker: %s', error)
@@ -215,14 +217,14 @@ WorkerState = namedtuple('WorkerState', 'worker time')
 
 
 class Relay(threading.Thread):
-    def __init__(self, cluster, set, consumer, handler, throttle=10):
+    def __init__(self, cluster, set, consumer, stream, throttle=10):
         super(Relay, self).__init__(name='relay')
         self.daemon = True
 
         self.cluster = cluster
         self.set = set
         self.consumer = consumer
-        self.handler = handler
+        self.stream = stream
         self.throttle = throttle
 
         self.__stop_requested = threading.Event()
@@ -235,7 +237,7 @@ class Relay(threading.Thread):
 
     def run(self):
         try:
-            logger.debug('Started relay (cluster: %s, set: %s) using %s.', self.cluster, self.set, self.handler)
+            logger.debug('Started relay (cluster: %s, set: %s) using %s.', self.cluster, self.set, self.stream)
 
             def __handle_session_state_change(state):
                 if state == KazooState.SUSPENDED:
@@ -274,7 +276,7 @@ class Relay(threading.Thread):
 
             # XXX just store the config
             def start_worker(dsn):
-                worker = Worker(self.cluster, dsn, self.set, self.consumer, self.handler)
+                worker = Worker(self.cluster, dsn, self.set, self.consumer, self.stream)
                 worker.start()
                 return WorkerState(worker, time.time())
 

@@ -1,14 +1,20 @@
 docker-compose up -d kafka zookeeper pgqd postgres
 
-docker-compose run -e PGHOST=postgres -e PGUSER=postgres --rm postgres psql -c 'CREATE DATABASE example'
-docker-compose run -e PGHOST=postgres -e PGUSER=postgres --rm postgres pgbench -i --foreign-keys example
+docker-compose run -e PGHOST=postgres -e PGUSER=postgres --rm --entrypoint=bash postgres
 
-docker-compose run --rm pgshovel cluster initialize
-docker-compose run --rm --entrypoint=python pgshovel example/set.py postgres:///example > /tmp/example.pgshovel
-docker-compose run --rm pgshovel set create example < /tmp/example.pgshovel
+psql -c 'CREATE DATABASE source'
+pgbench -i source
+psql -c 'CREATE DATABASE destination'
+pg_dump -i --schema-only source | psql destination
 
-docker-compose run --rm --entrypoint=pgshovel-stream-relay pgshovel example > mutations.log
+docker-compose run --rm --entrypoint=bash pgshovel
 
-docker-compose run -e PGHOST=postgres -e PGUSER=postgres --rm postgres pgbench example
+python -m pgshovel.administration cluster initialize
+python example/set.py postgres:///source | python -m pgshovel.administration set create example
+python -m pgshovel.relay example/configurations/relay.yml example
 
-docker-compose run -e PGHOST=postgres -e PGUSER=postgres --rm postgres psql -c 'select * from pgq.get_consumer_info();' example
+pgbench source
+
+python -m pgshovel.replication example/configurations/replication.yml example
+
+docker-compose stop && docker-compose rm -fv

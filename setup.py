@@ -27,6 +27,7 @@ Version = namedtuple(
 )
 
 packages = {
+    'PyYAML': Version('~=3.11', '==3.11'),
     'click': Version('~=4.0', '==4.1'),
     'futures': Version('~=3.0', '==3.0.3'),
     'kafka-python': Version('~=0.9', '==0.9.4'),
@@ -46,6 +47,7 @@ setup_requires = (
 )
 
 install_requires = (
+    'PyYAML',
     'click',
     'futures',
     'kazoo',
@@ -122,9 +124,9 @@ setup(
     install_requires=requirements(install_requires),
     entry_points={
         'console_scripts': [
-            'pgshovel = pgshovel.cli:__main__',
-            'pgshovel-kafka-relay = pgshovel.relay.handlers.kafka:__main__ [kafka]',
-            'pgshovel-stream-relay = pgshovel.relay.handlers.stream:__main__',
+            'pgshovel-admin = pgshovel.administration.__main__:__main__',
+            'pgshovel-relay = pgshovel.relay.__main__:__main__',
+            'pgshovel-replicate = pgshovel.replication.__main__:__main__',
         ],
     },
     include_package_data=True,

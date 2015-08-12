@@ -1,0 +1,89 @@
+package pgshovel.interfaces.replication;
+
+import "pgshovel/interfaces/common.proto";
+import "pgshovel/interfaces/streams.proto";
+
+
+message BootstrapState {
+
+    required bytes node = 1;
+
+    required common.Snapshot snapshot = 2;
+
+}
+
+
+message ConsumerState {
+
+    // last offset consumed
+    // XXX: this needs to be format agnostic
+    required uint64 offset = 1;
+
+    // last message header consumed
+    required streams.Header header = 2;
+
+    // dead publishers
+    // XXX: need to provide some mechanism to bound eventually, maybe replace
+    // with zookeeper sequence?
+    repeated bytes dead_publishers = 3;
+
+}
+
+
+message InTransaction {
+
+    required bytes publisher = 1;
+
+    required common.BatchIdentifier batch_identifier = 2;
+
+}
+
+message Committed {
+
+    required bytes publisher = 1;
+
+    required common.BatchIdentifier batch_identifier = 2;
+
+}
+
+message RolledBack {
+
+    required bytes publisher = 1;
+
+    required common.BatchIdentifier batch_identifier = 2;
+
+}
+
+
+message TransactionState {
+
+    oneof state {
+
+        InTransaction in_transaction = 1;
+        Committed committed = 2;
+        RolledBack rolled_back = 3;
+    }
+
+}
+
+
+message StreamState {
+
+    required ConsumerState consumer_state = 1;
+
+    required TransactionState transaction_state = 2;
+
+}
+
+
+message State {
+
+    // Bootstrapping: bootstrap_state = set, stream_state = not set
+    // Catching Up: bootstrap_state = set, stream_state = set
+    // Streaming: bootstrap_state = not set, stream_state = set
+
+    optional BootstrapState bootstrap_state = 1;
+
+    optional StreamState stream_state = 2;
+
+}

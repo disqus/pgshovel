@@ -3,10 +3,8 @@ from __future__ import absolute_import
 import operator
 import uuid
 
-from pgshovel.interfaces.streams_pb2 import Message
-from pgshovel.relay.handlers.kafka import KafkaWriter
+from pgshovel.relay.streams.kafka import KafkaWriter
 from pgshovel.utilities import import_extras
-from pgshovel.utilities.protobuf import BinaryCodec
 from tests.pgshovel.streams.fixtures import transaction
 
 with import_extras('kafka'):
@@ -15,14 +13,12 @@ with import_extras('kafka'):
     from kafka.producer.simple import SimpleProducer
 
 
-def test_handler():
+def test_writer():
     topic = '%s-mutations' % (uuid.uuid1().hex,)
-
-    codec = BinaryCodec(Message)
 
     client = KafkaClient('kafka')
     producer = SimpleProducer(client)
-    writer = KafkaWriter(producer, topic, codec)
+    writer = KafkaWriter(producer, topic)
 
     inputs = list(transaction)
     writer.push(inputs)
@@ -30,7 +26,7 @@ def test_handler():
     consumer = SimpleConsumer(client, 'test', topic, auto_offset_reset='smallest')
 
     outputs = map(
-        codec.decode,
+        writer.codec.decode,
         map(
             operator.attrgetter('message.value'),
             list(consumer.get_messages(count=3)),

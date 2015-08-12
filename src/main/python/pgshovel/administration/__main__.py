@@ -125,3 +125,7 @@ __main__ = functools.partial(
     main,
     auto_envvar_prefix='PGSHOVEL',
 )
+
+
+if __name__ == '__main__':
+    __main__()
