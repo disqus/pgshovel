@@ -1,0 +1,27 @@
+language: python
+
+python:
+    - "2.7"
+
+addons:
+    postgresql: "9.3"
+    hosts:
+        - kafka
+        - postgres
+        - zookeeper
+
+before_install:
+    - sudo apt-get update
+    - sudo apt-get install -y postgresql-9.3-pgq3 postgresql-plpython-9.3
+    - echo "max_prepared_transactions = 10" | sudo tee -a /etc/postgresql/9.3/main/postgresql.conf
+    - sudo /etc/init.d/postgresql restart
+    - .ci/install-zookeeper
+    - .ci/install-kafka
+    - .ci/install-protoc
+    - protoc -I src/main/protobuf --python_out=src/main/python $(find src/main/protobuf -name "*.proto")
+
+install:
+    - pip install -r requirements.txt
+    - pip install .
+
+script: python setup.py test

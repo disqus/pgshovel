@@ -5,6 +5,9 @@ pgshovel
 considered stable enough for production use as a critical infrastructure
 component.**
 
+.. image:: https://travis-ci.org/disqus/pgshovel.svg?branch=master
+    :target: https://travis-ci.org/disqus/pgshovel
+
 ``pgshovel`` is a `change data capture`_ system for PostgreSQL_, built on top of
 `Apache ZooKeeper`_, PgQ (part of SkyTools_), and database triggers.
 

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -ex
+
+cd /tmp
+curl -L https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz > protobuf-2.6.1.tar.gz
+tar xvf protobuf-2.6.1.tar.gz
+pushd protobuf-2.6.1
+./configure
+make
+sudo make install
+sudo ldconfig
