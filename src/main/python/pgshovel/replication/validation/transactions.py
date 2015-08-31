@@ -26,7 +26,10 @@ def get_operation(message):
 
 
 class InvalidEventError(Exception):
-    pass
+
+    def __init__(self, msg, expected=None, *args, **kwargs):
+        self.expected = expected or set()
+        super(InvalidEventError, self).__init__(msg, *args, **kwargs)
 
 
 class StatefulStreamValidator(object):
@@ -52,16 +55,20 @@ class StatefulStreamValidator(object):
             state = get_oneof_value(state, 'state')
 
         operation = get_oneof_value(get_oneof_value(message, 'operation'), 'operation')
+        state_cls = type(state) if state is not None else None
 
         try:
-            receivers = self.receivers[type(state) if state is not None else None]
+            receivers = self.receivers[state_cls]
         except KeyError:
             raise InvalidEventError('Cannot receive events in state: {0!r}'.format(state))
 
         try:
             receiver = receivers[type(operation)]
         except KeyError:
-            raise InvalidEventError('Cannot receive {0!r} while in state: {1!r}'.format(operation, state))
+            raise InvalidEventError(
+                'Cannot receive {0!r} while in state: {1!r}'.format(operation, state),
+                expected=set(receivers.keys())
+            )
 
         return self.message(**receiver(state, offset, message))
 

@@ -5,8 +5,8 @@ from collections import namedtuple
 import pytest
 
 from pgshovel.interfaces.streams_pb2 import (
-    BatchOperation,
     Message,
+    RollbackOperation,
 )
 from pgshovel.replication.validation.transactions import (
     Committed,
@@ -175,6 +175,16 @@ def test_stateful_validator_unhandled_starting_state(message):
 
     with pytest.raises(InvalidEventError):
         validator(None, 0, message)
+
+
+def test_adds_expected_events_to_exception_for_unknown_event_for_state(message):
+    receivers = {None: {RollbackOperation: 3}}
+    validator = StatefulStreamValidator(lambda **kwargs: None, receivers)
+
+    with pytest.raises(InvalidEventError) as exception:
+        validator(None, 0, message)
+
+    assert exception.value.expected == {RollbackOperation}
 
 
 def test_successful_transaction():

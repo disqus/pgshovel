@@ -32,3 +32,8 @@ validate_state = MultipleStateValidator(State, {
         'transaction_state': validate_transaction_state,
     })
 })
+
+
+#: The expected types of event for a stream of transactions when there is no
+#: existing ``TransactionState``.
+TRANSACTION_START_EVENT_TYPES = validate_state.validators['stream_state'].validators['transaction_state'].receivers[None].keys()  # noqa

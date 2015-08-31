@@ -43,6 +43,16 @@ def test_simple_sequence():
     list(validate(messages))
 
 
+def test_first_message_publisher_can_be_non_zero_sequence_start():
+    messages = [
+        Message(header=build_header(222)),
+        Message(header=build_header(223)),
+        Message(header=build_header(224)),
+    ]
+
+    list(validate(messages))
+
+
 def test_state_returned_is_same_offset_and_message_heade():
     messages = [
         Message(header=build_header(0)),

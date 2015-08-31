@@ -130,7 +130,7 @@ def loader(cluster, set):
 def stream(cluster, set, client):
     topic = str(uuid.uuid4())
     client.ensure_topic_exists(topic)
-    yield LimitedKafkaStream(2, cluster, set, ('kafka:9092',), topic)
+    yield LimitedKafkaStream(2, cluster, set, ('kafka:9092',), topic, 5)
 
 
 @pytest.yield_fixture
