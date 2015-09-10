@@ -253,24 +253,24 @@ class Relay(threading.Thread):
             # condition that can cause the relay to never exit if the watch is
             # established against a dead/unresponsive ZooKeeper ensemble.
 
-            # def __handle_cluster_version_change(data, stat):
-            #     if not data:
-            #         logger.warning('Received no cluster configuration data! Requesting exit...')
-            #         self.__stop_requested.set()
-            #         return False
+            def __handle_cluster_version_change(data, stat):
+                if not data:
+                    logger.warning('Received no cluster configuration data! Requesting exit...')
+                    self.__stop_requested.set()
+                    return False
 
-            #     configuration = BinaryCodec(ClusterConfiguration).decode(data)
-            #     if __version__ != configuration.version:
-            #         logger.warning('Cluster and local versions do not match (cluster: %s, local: %s)! Requesting exit...', cluster, __version__)
-            #         self.__stop_requested.set()
-            #         return False
+                configuration = BinaryCodec(ClusterConfiguration).decode(data)
+                if __version__ != configuration.version:
+                    logger.warning('Cluster and local versions do not match (cluster: %s, local: %s)! Requesting exit...', cluster, __version__)
+                    self.__stop_requested.set()
+                    return False
 
-            # logger.debug('Checking cluster version...')
-            # DataWatch(
-            #     self.cluster.zookeeper,
-            #     self.cluster.path,
-            #     __handle_cluster_version_change,
-            # )
+            logger.debug('Checking cluster version...')
+            DataWatch(
+                self.cluster.zookeeper,
+                self.cluster.path,
+                __handle_cluster_version_change,
+            )
 
             stopping = []
 
