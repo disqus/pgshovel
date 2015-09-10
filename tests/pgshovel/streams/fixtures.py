@@ -100,11 +100,30 @@ def make_batch_messages(batch_identifier, payloads, **kwargs):
     return make_messages(payloads, **kwargs)
 
 
-transaction = make_batch_messages(batch_identifier, (
+transaction = list(make_batch_messages(batch_identifier, (
     {'begin_operation': begin},
     {'mutation_operation': mutation},
     {'commit_operation': commit},
-))
+)))
+
+
+def transactions():
+    node_id = uuid.uuid1().bytes
+    transaction_payloads = (
+        {'begin_operation': begin},
+        {'mutation_operation': mutation},
+        {'commit_operation': commit},
+    )
+    sequence_ids = itertools.count()
+
+    for batch_id in itertools.count():
+        batch = BatchIdentifier(id=batch_id, node=node_id)
+        payloads = (
+            {'batch_operation': BatchOperation(batch_identifier=batch, **payload)}
+            for payload in transaction_payloads
+        )
+        for payload in payloads:
+            yield make_message(payload, next(sequence_ids))
 
 
 @pytest.yield_fixture

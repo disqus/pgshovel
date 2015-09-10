@@ -43,6 +43,19 @@ def test_simple_sequence():
     list(validate(messages))
 
 
+def test_state_returned_is_same_offset_and_message_heade():
+    messages = [
+        Message(header=build_header(0)),
+        Message(header=build_header(1)),
+        Message(header=build_header(2)),
+    ]
+    last_message = messages[-1]
+    last_state = list(validate(messages))[-1]
+
+    assert last_state.header == last_message.header
+    assert last_state.offset == 2
+
+
 def test_incorrect_sequence_start():
     messages = [
         Message(header=build_header(1)),
