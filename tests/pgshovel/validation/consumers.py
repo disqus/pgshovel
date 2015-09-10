@@ -7,16 +7,22 @@ from pgshovel.interfaces.streams_pb2 import (
     Header,
     Message,
 )
-from pgshovel.streams.sequences import (
+from pgshovel.interfaces.replication_pb2 import ConsumerState
+from pgshovel.replication.validation.consumers import (
     InvalidPublisher,
     InvalidSequenceStartError,
-    RepeatedSequenceError,
     SequencingError,
-    validate,
+    validate_consumer_state,
 )
 
 
 timestamp = Timestamp(seconds=0, nanos=0)
+
+
+def validate(stream, start=0, state=None):
+    for offset, message in enumerate(stream, start):
+        state = validate_consumer_state(state, offset, message)
+        yield state
 
 
 def build_header(sequence, publisher=uuid.uuid1().bytes, timestamp=timestamp):
@@ -34,8 +40,7 @@ def test_simple_sequence():
         Message(header=build_header(2)),
     ]
 
-    stream = validate(messages)
-    assert list(stream) == messages
+    list(validate(messages))
 
 
 def test_incorrect_sequence_start():
@@ -43,7 +48,9 @@ def test_incorrect_sequence_start():
         Message(header=build_header(1)),
     ]
 
-    stream = validate(messages)
+    state = ConsumerState()
+    state.header.publisher = 'abcd'
+    stream = validate(messages, start=1, state=state)
     with pytest.raises(InvalidSequenceStartError):
         next(stream)
 
@@ -57,9 +64,9 @@ def test_invalid_multiplexed_sequence():
     ]
 
     stream = validate(messages)
-    assert next(stream) is messages[0]
-    assert next(stream) is messages[1]
-    assert next(stream) is messages[2]
+    assert next(stream)
+    assert next(stream)
+    assert next(stream)
     with pytest.raises(InvalidPublisher):
         next(stream)
 
@@ -72,7 +79,7 @@ def test_missing_message():
 
     stream = validate(messages)
 
-    assert next(stream) is messages[0]
+    assert next(stream)
     with pytest.raises(SequencingError):
         next(stream)
 
@@ -87,9 +94,9 @@ def test_out_of_order_message():
 
     stream = validate(messages)
 
-    assert next(stream) is messages[0]
-    assert next(stream) is messages[1]
-    assert next(stream) is messages[2]
+    assert next(stream)
+    assert next(stream)
+    assert next(stream)
     with pytest.raises(SequencingError):
         next(stream)
 
@@ -103,7 +110,10 @@ def test_duplicate_message():
     ]
 
     stream = validate(messages)
-    assert list(stream) == [messages[0], messages[1], messages[3]]
+    assert next(stream)
+    assert next(stream)
+    with pytest.raises(SequencingError):
+        next(stream)
 
 
 def test_repeated_sequence():
@@ -113,7 +123,7 @@ def test_repeated_sequence():
     ]
 
     stream = validate(messages)
-    assert next(stream) is messages[0]
+    assert next(stream)
 
-    with pytest.raises(RepeatedSequenceError):
+    with pytest.raises(SequencingError):
         next(stream)

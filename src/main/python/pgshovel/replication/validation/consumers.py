@@ -21,13 +21,6 @@ class InvalidPublisher(SequencingError):
     """
 
 
-class RepeatedSequenceError(SequencingError):
-    """
-    Error raised when a sequence value is reused for a different message from
-    the same publisher.
-    """
-
-
 class InvalidSequenceStartError(Exception):
     """
     Error raised when a message is recieved from a new publisher that starts
