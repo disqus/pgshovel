@@ -388,10 +388,10 @@ License
 .. _`Apache ZooKeeper`: https://zookeeper.apache.org/
 .. _`Bottled Water`: https://github.com/confluentinc/bottledwater-pg
 .. _`Diamond PgQ Collector`: https://github.com/python-diamond/Diamond/blob/master/src/collectors/pgq/pgq.py
+.. _`PostgreSQL docs for transaction iolation`: http://www.postgresql.org/docs/9.4/static/transaction-iso.html
 .. _`change data capture`: http://en.wikipedia.org/wiki/Change_data_capture
+.. _`example set builder tool`: https://github.com/disqus/pgshovel/blob/master/example/set.py
 .. _`logging configuration file`: https://docs.python.org/2/library/logging.config.html#configuration-file-format
 .. _`logical decoding`: http://www.postgresql.org/docs/9.4/static/logicaldecoding-explanation.html
+.. _`protobuf message defintion`: https://github.com/disqus/pgshovel/blob/master/src/main/protobuf/pgshovel/interfaces/configurations.proto#L33-L41
 .. _pgqd: http://skytools.projects.pgfoundry.org/skytools-3.0/doc/pgqd.html
-.. `protobuf message defintion`: https://github.com/disqus/pgshovel/blob/master/src/main/protobuf/pgshovel/interfaces/configurations.proto#L33-L41
-.. `example set builder tool`: https://github.com/disqus/pgshovel/blob/master/example/set.py
-.. _`PostgreSQL docs for transaction iolation`: http://www.postgresql.org/docs/9.4/static/transaction-iso.html
