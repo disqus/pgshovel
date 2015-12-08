@@ -5,10 +5,6 @@ This project is deprecated and no longer actively maintained by Disqus.
 pgshovel
 ########
 
-**This project is still under active development and should not yet be
-considered stable enough for production use as a critical infrastructure
-component.**
-
 .. image:: https://travis-ci.org/disqus/pgshovel.svg?branch=master
     :target: https://travis-ci.org/disqus/pgshovel
 
